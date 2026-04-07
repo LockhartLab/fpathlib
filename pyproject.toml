@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68", "wheel", "setuptools_scm"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+write_to = "src/metapath/_version.py"
+version_scheme = "post-release"
+local_scheme = "no-local-version"
+
+[project]
+name = "metapath"
+dynamic = ["version"]
+description = "A package to combine paths with metadata"
+authors = [{ name="C. Lockhart", email="clockha2@gmu.edu" }]
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "parse",
+    "polars",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "black"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
