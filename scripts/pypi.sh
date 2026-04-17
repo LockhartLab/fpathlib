@@ -1,4 +1,4 @@
 python -m build
 twine upload dist/*
 rm -r dist
-rm -r src/metapath.egg-info
+rm -r src/fpathlib.egg-info

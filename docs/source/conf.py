@@ -10,8 +10,8 @@ sys.path.insert(0, os.path.abspath('../src'))
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'metapath'
-copyright = '2026, C. Lockhart'
+project = 'fpathlib'
+copyright = '2026, Lockhart Lab'
 author = 'C. Lockhart'
 release = '0.1.0'
 
