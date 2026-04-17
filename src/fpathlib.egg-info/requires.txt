@@ -1,0 +1,6 @@
+parse
+
+[dev]
+pytest
+black
+sphinx

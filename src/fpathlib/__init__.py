@@ -1,11 +1,9 @@
 
-from pathlib import *
-
-from fpathlib.path import Path, PathPattern, ExpandedPathPattern
+from fpathlib.path import Path, FPath, ExpandedFPath, expand_fpath
 
 __all__ = [
 	"Path",
-	"PathPattern",
-	"ExpandedPathPattern",
-    "expand_path_pattern",
+	"FPath",
+	"ExpandedFPath",
+    "expand_fpath",
 ]

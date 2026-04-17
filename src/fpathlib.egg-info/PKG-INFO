@@ -1,0 +1,19 @@
+Metadata-Version: 2.4
+Name: fpathlib
+Version: 0.1.1.post0
+Summary: A package to combine paths with metadata
+Author-email: "C. Lockhart" <clockha2@gmu.edu>
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: parse
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: black; extra == "dev"
+Requires-Dist: sphinx; extra == "dev"
+Dynamic: license-file
+
+fpathlib
+========
+
+A Python package for adding metadata to file paths.
