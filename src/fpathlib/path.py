@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from glob import glob
 import parse
 import pathlib
@@ -7,10 +8,10 @@ import re
 class Path(pathlib.Path):
     """
     :obj:`Path` is simply :obj:`pathlib.Path` with metadata.
-        
+
     Parameters
     ----------
-    *pathsegments 
+    *pathsegments
     """
 
     def __init__(self, *pathsegments, metadata=None):
@@ -28,7 +29,7 @@ class Path(pathlib.Path):
 
         if isinstance(path_patterns, str):
             path_patterns = [path_patterns]
-  
+
         for path_pattern in path_patterns:
             if self.match(path_pattern):
                 return True
@@ -41,7 +42,7 @@ class FPath:
     :obj:`FPath` is an f-string version of :obj:`Path`. This does not behave like a typical Path, because typically there are several matches to the f-string Path. Therefore, the :meth:`.FPath.expand` method must be used to create an :obj:`ExpandedFPath` that lists all the possibilities.
 
     Example:
-    
+
 
     Parameters
     ----------
@@ -55,10 +56,13 @@ class FPath:
     def __init__(self, fpath):
         self.fpath = fpath
 
+    def __repr__(self):
+        return "FPath({!r})".format(self.fpath)
+
     def expand(self, exclude_path_patterns=None, require_metadata=True):
         """
         Use an f-string to extract out a collection of paths, where the f-string variables are captured and stored along the path name.
-    
+
         Parameters
         ----------
         exclude_path_patterns : :obj:`str` or :obj:`Iterable`[:obj:`str`]
@@ -70,9 +74,9 @@ class FPath:
         -------
         :obj:`.ExpandedFPath`
         """
-    
+
         parser = parse.compile(self.fpath)
-    
+
         paths = []
         for fname in glob(re.sub(r"\{.*?\}", "*", self.fpath)):
             path = Path(fname)
@@ -83,17 +87,17 @@ class FPath:
                 msg = f"metadata not found for '{fname}' with fstring '{fstring}'"
                 raise AttributeError(msg)
             paths.append(path)
-    
-        return ExpandedFPath(paths)
+
+        return ExpandedFPath(paths=paths, fpath=self)
 
 
 # TODO does scan_csv belong here?
-class ExpandedFPath:
-    def __init__(self, paths, path_pattern):
+class ExpandedFPath(Sequence):
+    def __init__(self, paths, fpath):
         if len(paths) != len(set(paths)):
             raise AttributeError("paths are not unique")
         self.paths = paths
-        self.path_pattern = path_pattern
+        self.fpath = fpath
 
     def __getitem__(self, item):
         return self.paths[item]
@@ -101,12 +105,33 @@ class ExpandedFPath:
     def __len__(self):
         return len(self.paths)
 
+    def __repr__(self):
+        n = len(self)
+
+        txt = f"{self.fpath.__repr__()}\n\n"
+        txt += f"{n} matches found:\n\n"
+
+        for path in self.paths[:10]:
+            txt += f"{repr(path)}\n"
+        if n > 10:
+            txt += "...\n"
+
+        return txt
+
     @property
     def metadata(self):
         metadata = {path: path.metadata for path in self.paths}
         return metadata
 
     def to_polars(self, lazy=False):
+        """ """
+
+        try:
+            import polars as pl
+        except ImportError:
+            msg = "`polars` must be installed to use this feature"
+            raise ImportError(msg)
+
         data = [{"fname": str(key), **value} for key, value in self.metadata.items()]
         df = pl.DataFrame(data)
         if lazy:
@@ -114,8 +139,10 @@ class ExpandedFPath:
         return df
 
 
-def expand_fpath(fpath, exclude=None, require_metadata=True):
-    """
-    """
+def expand_fpath(fpath, exclude_path_patterns=None, require_metadata=True):
+    """ """
 
-    return FPath(fpath).expand(exclude=exclude, require_metadata=require_metadata)
+    return FPath(fpath).expand(
+        exclude_path_patterns=exclude_path_patterns,
+        require_metadata=require_metadata,
+    )
