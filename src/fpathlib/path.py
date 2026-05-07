@@ -114,7 +114,7 @@ class FPath:
     def __repr__(self):
         return "FPath({!r})".format(self.fpath)
 
-    def expand(self, exclude_path_patterns=None, require_metadata=True):
+    def expand(self, exclude_path_patterns=None, require_metadata=True, errors="raise"):
         """
         Use an f-string to extract out a collection of paths, where the f-string
         variables are captured and stored along the path name.
@@ -125,11 +125,19 @@ class FPath:
             Exclude paths that match the supplied pattern. (Default: None).
         require_metadata : :obj:`bool`
             Require that all paths identified must have found metadata. (Default: True).
+        errors : :obj:`str`
+			How to handle errors. If "raise", then raise an error. If "warn", then warn 
+			and return an empty collection. If "ignore", then ignore the error and 
+			return an empty collection. (Default: "raise").
 
         Returns
         -------
         :obj:`.ExpandedFPath`
         """
+
+		if errors not in {"raise", "warn", "ignore"}:
+			msg = f"invalid value for 'errors': {errors}"
+			raise ValueError(msg)
 
         parser = parse.compile(self.fpath)
 
@@ -143,6 +151,14 @@ class FPath:
                 msg = f"metadata not found for '{fname}' with fstring '{fstring}'"
                 raise AttributeError(msg)
             paths.append(path)
+
+		if len(paths) == 0 and errors != "ignore":
+			msg = f"no paths found for {self.fpath.__repr__()}"
+			if errors == "raise":
+				raise IOError(msg)
+			elif errors == "warn":
+				import warnings
+				warnings.warn(msg)
 
         return ExpandedFPath(paths=paths, fpath=self)
 
