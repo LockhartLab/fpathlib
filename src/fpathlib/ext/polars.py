@@ -1,6 +1,7 @@
 
+from polars import *
+import polars as pl
 from fpathlib import expand_fpath
-from .utils import import_optional_dependency
 
 def scan_csv(fpath, exclude_path_patterns=None, require_metadata=True, **kwargs):
     """
@@ -22,8 +23,6 @@ def scan_csv(fpath, exclude_path_patterns=None, require_metadata=True, **kwargs)
     -------
     :obj:`polars.LazyFrame`
     """
-
-    pl = import_optional_dependency("polars")
 
     expanded_fpath = expand_fpath(
 		fpath,
