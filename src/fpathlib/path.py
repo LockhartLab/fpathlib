@@ -4,6 +4,8 @@ import parse
 import pathlib
 import re
 
+from .utils import import_optional_dependency
+
 
 class Path(pathlib.Path):
     """
@@ -126,18 +128,18 @@ class FPath:
         require_metadata : :obj:`bool`
             Require that all paths identified must have found metadata. (Default: True).
         errors : :obj:`str`
-			How to handle errors. If "raise", then raise an error. If "warn", then warn 
-			and return an empty collection. If "ignore", then ignore the error and 
-			return an empty collection. (Default: "raise").
+            How to handle errors. If "raise", then raise an error. If "warn", then warn
+            and return an empty collection. If "ignore", then ignore the error and
+            return an empty collection. (Default: "raise").
 
         Returns
         -------
         :obj:`.ExpandedFPath`
         """
 
-		if errors not in {"raise", "warn", "ignore"}:
-			msg = f"invalid value for 'errors': {errors}"
-			raise ValueError(msg)
+        if errors not in {"raise", "warn", "ignore"}:
+            msg = f"invalid value for 'errors': {errors}"
+            raise ValueError(msg)
 
         parser = parse.compile(self.fpath)
 
@@ -152,13 +154,14 @@ class FPath:
                 raise AttributeError(msg)
             paths.append(path)
 
-		if len(paths) == 0 and errors != "ignore":
-			msg = f"no paths found for {self.fpath.__repr__()}"
-			if errors == "raise":
-				raise IOError(msg)
-			elif errors == "warn":
-				import warnings
-				warnings.warn(msg)
+        if len(paths) == 0 and errors != "ignore":
+            msg = f"no paths found for {self.fpath.__repr__()}"
+            if errors == "raise":
+                raise IOError(msg)
+            elif errors == "warn":
+                import warnings
+
+                warnings.warn(msg)
 
         return ExpandedFPath(paths=paths, fpath=self)
 
@@ -218,6 +221,7 @@ class ExpandedFPath(Sequence):
         metadata = {path: path.metadata for path in self.paths}
         return metadata
 
+    # TODO fix value types?
     def to_polars(self, lazy=False):
         """
         Convert the metadata for each path in the collection to a polars DataFrame.
@@ -232,11 +236,7 @@ class ExpandedFPath(Sequence):
         :obj:`polars.DataFrame` or :obj:`polars.LazyFrame`
         """
 
-        try:
-            import polars as pl
-        except ImportError:
-            msg = "`polars` must be installed to use this feature"
-            raise ImportError(msg)
+        pl = import_optional_dependency("polars")
 
         data = [{"fname": str(key), **value} for key, value in self.metadata.items()]
         df = pl.DataFrame(data)
