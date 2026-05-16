@@ -1,0 +1,87 @@
+
+from polars import *
+import polars as pl
+from fpathlib import expand_fpath_decorator
+
+@expand_fpath_decorator 
+def scan_csv(expanded_fpath, *args, **kwargs):
+    """
+    Scan the paths in the collection as CSV files, and return a 
+	:obj:`polars.LazyFrame` along with the metadata captured from the path 
+	variables.
+
+    Parameters
+    ----------
+	expanded_fpath : :obj:`fpathlib.ExpandedFPath`
+		An expanded f-string path, where the variables are captured and stored. 
+	*args
+		Positional arguments to pass to :meth:`polars.scan_csv`.
+    **kwargs
+        Keyword arguments to pass to :meth:`polars.scan_csv`.
+
+    Returns
+    -------
+    :obj:`polars.LazyFrame`
+    """
+
+    lf = pl.scan_csv(
+        expanded_fpath,
+        include_file_paths="fname",
+		*args,
+        **kwargs,
+    )
+
+    lf = lf.join(
+        expanded_fpath.to_polars(lazy=True),
+        on="fname",
+    )
+
+    return lf
+
+@expand_fpath_decorator
+def scan_txt(expanded_fpath, *args, **kwargs):
+	"""
+	Scan the paths in the collection as text files, where each line is a 
+	record, and return a :obj:`polars.LazyFrame` along with the metadata 
+	captured from the path. The text files can also be delimited by 
+	`separator`, in which case the lines are split by the separator and each 
+	field is a record. The names of these field can be set by `new_columns`. 
+
+	Parameters
+	----------
+	expanded_fpath : :obj:`fpathlib.ExpandedFPath`
+		An expanded f-string path, where the variables are captured and stored.
+    *args
+	**kwargs
+		Keyword arguments to pass to :meth:`polars.scan_csv`.
+
+	Returns
+	-------
+	:obj:`polars.LazyFrame`
+	"""
+
+	lf = pl.scan_csv(
+		expanded_fpath,
+		include_file_paths="fname",
+		separator="\n",
+		new_columns=["line"],
+		has_header=False,
+		**kwargs,
+	)
+
+	if separator is not None:
+		lf = lf.with_columns(fields=pl.col("line").str.split(r"\s+", literal=False))
+		lf = lf.with_columns(
+			pl.col("line").str.split(separator).alias("fields")
+		).unnest("fields")
+
+		if new_columns is not None:
+			lf = lf.rename({f"fields_{i}": col for i, col in enumerate(new_columns)}
+
+	lf = lf.join(
+		expanded_fpath.to_polars(lazy=True),
+		on="fname",
+	)
+
+	return lf
+

@@ -1,21 +1,21 @@
 
 from polars import *
 import polars as pl
-from fpathlib import expand_fpath
+from fpathlib import expand_fpath_decorator
 
-def scan_csv(fpath, exclude_path_patterns=None, require_metadata=True, **kwargs):
+@expand_fpath_decorator 
+def scan_csv(expanded_fpath, *args, **kwargs):
     """
-    Scan the paths in the collection as CSV files, and return a polars DataFrame.
+    Scan the paths in the collection as CSV files, and return a 
+	:obj:`polars.LazyFrame` along with the metadata captured from the path 
+	variables.
 
     Parameters
     ----------
-    fpath : :obj:`str`
-        An f-string path, where the variables are captured and stored along the path
-        name.
-    exclude_path_patterns : :obj:`str` or :obj:`Iterable`[:obj:`str`]
-        Exclude paths that match the supplied pattern. (Default: None).
-    require_metadata : :obj:`bool`
-        Require that all paths identified must have found metadata. (Default: True).   
+	expanded_fpath : :obj:`fpathlib.ExpandedFPath`
+		An expanded f-string path, where the variables are captured and stored. 
+	*args
+		Positional arguments to pass to :meth:`polars.scan_csv`.
     **kwargs
         Keyword arguments to pass to :meth:`polars.scan_csv`.
 
@@ -24,15 +24,10 @@ def scan_csv(fpath, exclude_path_patterns=None, require_metadata=True, **kwargs)
     :obj:`polars.LazyFrame`
     """
 
-    expanded_fpath = expand_fpath(
-		fpath,
-		exclude_path_patterns=exclude_path_patterns,
-		require_metadata=require_metadata,
-	)
-
     lf = pl.scan_csv(
         expanded_fpath,
         include_file_paths="fname",
+		*args,
         **kwargs,
     )
 
@@ -41,4 +36,3 @@ def scan_csv(fpath, exclude_path_patterns=None, require_metadata=True, **kwargs)
         on="fname",
     )
 
-    return lf

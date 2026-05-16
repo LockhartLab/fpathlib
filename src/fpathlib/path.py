@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from functools import wraps
 from glob import glob
 import parse
 import pathlib
@@ -150,7 +151,7 @@ class FPath:
                 continue
             path.metadata = getattr(parser.parse(fname), "named", None)
             if require_metadata and path.metadata is None:
-                msg = f"metadata not found for '{fname}' with fstring '{fstring}'"
+                msg = f"metadata not found for '{fname}' with '{self.fpath}'"
                 raise AttributeError(msg)
             paths.append(path)
 
@@ -270,3 +271,15 @@ def expand_fpath(fpath, exclude_path_patterns=None, require_metadata=True):
         exclude_path_patterns=exclude_path_patterns,
         require_metadata=require_metadata,
     )
+
+def expand_fpath_decorator(f):
+	"""
+	Decorator for :func:`.expand_fpath`.
+	"""
+
+	@wraps(f)
+	def wrapper(fpath, *args, **kwargs):
+		expanded_fpath = expand_fpath(fpath, *args, **kwargs)
+		return expand_fpath(fpath, *args, **kwargs)
+
+	return wrapper
