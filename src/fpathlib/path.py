@@ -246,7 +246,7 @@ class ExpandedFPath(Sequence):
         return df
 
 
-def expand_fpath(fpath, exclude_path_patterns=None, require_metadata=True):
+def expand_fpath(fpath, *, exclude_path_patterns=None, require_metadata=True):
     """
     Use an f-string to extract out a collection of paths, where the f-string variables
     are captured and stored along the path name. This is a convenience function that
@@ -272,14 +272,38 @@ def expand_fpath(fpath, exclude_path_patterns=None, require_metadata=True):
         require_metadata=require_metadata,
     )
 
-def expand_fpath_decorator(f):
-	"""
-	Decorator for :func:`.expand_fpath`.
-	"""
 
-	@wraps(f)
-	def wrapper(fpath, *args, **kwargs):
-		expanded_fpath = expand_fpath(fpath, *args, **kwargs)
-		return expand_fpath(fpath, *args, **kwargs)
+def expand_fpath_decorator(f=None, post_process=None):
+    """
+    Decorator for :func:`.expand_fpath`.
 
-	return wrapper
+    Parameters
+    ----------
+    f : :obj:`callable`
+        A function that takes an :ref:`.ExpandedFPath` as its first argument.
+    post_process : :obj:`callable`
+        A function that takes the output of `f` and the :ref:`.ExpandedFPath`. 
+        (Default: None).
+    """
+
+    def decorator(f):
+        @wraps(f)
+        def wrapper(fpath, *args, **kwargs):
+            exclude_path_patterns = kwargs.pop("exclude_path_patterns", None)
+            require_metadata = kwargs.pop("require_metadata", True)
+            expanded_fpath = expand_fpath(
+                fpath,
+                exclude_path_patterns=exclude_path_patterns,
+                require_metadata=require_metadata,
+            )
+            result = f(expanded_fpath, *args, **kwargs)
+            if post_process is not None:
+                result = post_process(result, expanded_fpath)
+            return result
+
+        return wrapper
+
+    if f is None:
+        return decorator
+    else:
+        return decorator(f)
