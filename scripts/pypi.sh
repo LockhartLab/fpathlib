@@ -4,9 +4,11 @@ then
   allow_dev=1
 fi
 
-if [ $allow_dev -eq 0 ]
+commits_ahead=$(git describe --tags | awk -F- '{print $2}')
+if [ $allow_dev -eq 0 ] && [ "$commits_ahead" != "" ]
 then
-  is_dev=
+  echo "current commit ahead of latest tag, not uploading to pypi"
+  return 
 fi
 
 python -m build
