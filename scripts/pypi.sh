@@ -1,4 +1,4 @@
 python -m build
-twine upload dist/*
+twine upload --verbose dist/*
 rm -r dist
 rm -r src/fpathlib.egg-info
