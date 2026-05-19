@@ -1,4 +1,4 @@
-tag="0.1.5"
+tag="0.1.6"
 
 git add -A
 git commit -m "tag $tag"
