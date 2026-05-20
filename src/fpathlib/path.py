@@ -112,7 +112,7 @@ class FPath:
     """
 
     def __init__(self, fpath):
-        self.fpath = fpath
+        self.fpath = str(fpath)  # must be string, not Path or something else
 
     def __repr__(self):
         return "FPath({!r})".format(self.fpath)
