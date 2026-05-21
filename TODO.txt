@@ -1,0 +1,6 @@
+
+1. Tests are a mix between automated (in loading different test cases) and hardcoded (in asserting the expected output). If we move to other testcases, this will not work.
+
+
+
+
