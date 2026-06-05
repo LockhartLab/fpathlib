@@ -164,6 +164,8 @@ def scan_txt(
     # TODO there are forbidden variables that should not be in expanded_fpath
     # such as 'line' and 'fields' and 'fname'
 
+    # TODO schema and schema_overrides is probably broken
+
     lf = pl.scan_csv(
         expanded_fpath,
         include_file_paths="fname",
@@ -178,16 +180,45 @@ def scan_txt(
 
     if separator is not None:
         lf = lf.with_columns(fields=pl.col("line").str.split(separator, literal=False))
+
         n_fields = lf.select(pl.col("fields").list.len().unique()).collect()
         if n_fields.shape[0] > 1:
-            msg = "number of fields must be consistent across all lines", n_fields
+            msg = "inconsistent number of fields", n_fields
             raise ValueError(msg)
         n_fields = n_fields.item()
+
+        fields = [f"field_{i}" for i in range(n_fields)]
+
         lf = lf.with_columns(
-            [pl.col("fields").list.get(i).alias(f"field_{i}") for i in range(n_fields)]
-        ).drop(["fields", "line"])
+            [
+                pl.col("fields").list.get(i).alias(field)
+                for i, field in enumerate(fields)
+            ]
+        )
+
+        lf = lf.drop(["fields", "line"])
+
+        # LazyFrame does not guarantee order, so the header might not be the first row
+        # This can be fixed by scan_csv with include_row_index. But this seems clunky
+        if has_header:
+            """
+            first_row = lf.head(1).collect()
+            header.to_pandas().transpose()[0].to_dict()
+            lf = lf.slice(offset=1, length=None)
+            header = first_row.select(pl.col(fields)).to_dict(as_series=False)
+            lf = lf.rename({field: header[field][0] for field in fields})
+            """
+            raise NotImplementedError
 
         if new_columns is not None:
-            lf = lf.rename({f"field_{i}": col for i, col in enumerate(new_columns)})
+            lf = lf.rename(
+                {field: new_column for field, new_column in zip(fields, new_columns)}
+            )
 
+        # Infer dtypes?
+        if kwargs.get("infer_schema", True):
+            sample = lf.head(kwargs.get("infer_schema_length", 100)).collect().write_csv().encode()
+            inferred_schema = pl.read_csv(sample).schema
+            lf = lf.cast(inferred_schema)
+    
     return lf

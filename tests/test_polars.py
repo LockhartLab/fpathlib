@@ -74,7 +74,6 @@ def test_scan_txt(testcase):
         has_header=False,
         separator=r"\s+",
     )
-
     assert type(df) == pl.LazyFrame
     assert df.select(pl.len()).collect().item() == 12000
     assert df.select(pl.col("trajectory").unique().len()).collect().item() == 2
