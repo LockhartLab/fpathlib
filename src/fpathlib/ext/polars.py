@@ -175,18 +175,26 @@ def scan_txt(
         **kwargs,
     )
 
+    # Can filter lines before doing any further processing
+    # This could be to remove lines with comments, etc.
     if filter_expr is not None:
         lf = lf.filter(filter_expr)
 
+    # Separate lines into fields using `separator`
     if separator is not None:
-        lf = lf.with_columns(fields=pl.col("line").str.split(separator, literal=False))
+        # Separate line into fields by separator
+        lf = lf.with_columns(
+            pl.col("line").str.split(separator, literal=False).alias("fields")
+        ).drop("line")
 
+        # Count the number of fields; must be consistent across all rows
         n_fields = lf.select(pl.col("fields").list.len().unique()).collect()
         if n_fields.shape[0] > 1:
             msg = "inconsistent number of fields", n_fields
             raise ValueError(msg)
         n_fields = n_fields.item()
 
+        # Initial field names, may be renamed later from header or by `new_columns`
         fields = [f"field_{i}" for i in range(n_fields)]
 
         lf = lf.with_columns(
@@ -194,9 +202,7 @@ def scan_txt(
                 pl.col("fields").list.get(i).alias(field)
                 for i, field in enumerate(fields)
             ]
-        )
-
-        lf = lf.drop(["fields", "line"])
+        ).drop("fields")
 
         # LazyFrame does not guarantee order, so the header might not be the first row
         # This can be fixed by scan_csv with include_row_index. But this seems clunky
@@ -217,8 +223,13 @@ def scan_txt(
 
         # Infer dtypes?
         if kwargs.get("infer_schema", True):
-            sample = lf.head(kwargs.get("infer_schema_length", 100)).collect().write_csv().encode()
+            sample = (
+                lf.head(kwargs.get("infer_schema_length", 100))
+                .collect()
+                .write_csv()
+                .encode()
+            )
             inferred_schema = pl.read_csv(sample).schema
             lf = lf.cast(inferred_schema)
-    
+
     return lf
