@@ -273,7 +273,7 @@ def expand_fpath(fpath, *, exclude_path_patterns=None, require_metadata=True):
     )
 
 
-def expand_fpath_decorator(f=None, post_process=None):
+def expand_fpath_decorator(f=None, require_expandable=True, post_process=None):
     """
     Decorator for :func:`.expand_fpath`.
 
@@ -289,6 +289,16 @@ def expand_fpath_decorator(f=None, post_process=None):
     def decorator(f):
         @wraps(f)
         def wrapper(fpath, *args, **kwargs):
+            # What happens if fpath is not expandable? 
+            # If require_expandable is True, raise an error. 
+            # Otherwise, just call f with the original fpath.
+            if not is_expandable(fpath):
+                if require_expandable:
+                    msg = f"fpath '{fpath}' is not expandable"
+                    raise ValueError(msg)
+                return f(fpath, *args, **kwargs)  
+
+            # We know fpath is expandable, so we can expand it and call f 
             exclude_path_patterns = kwargs.pop("exclude_path_patterns", None)
             require_metadata = kwargs.pop("require_metadata", True)
             expanded_fpath = expand_fpath(
@@ -307,3 +317,22 @@ def expand_fpath_decorator(f=None, post_process=None):
         return decorator
     else:
         return decorator(f)
+
+def is_expandable(fpath):
+    """
+    Check if expandable.
+
+    Parameters
+    ----------
+    fpath : :obj:`str`
+   
+    Returns
+    -------
+    :obj:`bool`
+    """
+
+    try: 
+        parser = parse.compile(fpath)
+        return bool(parser.named_fields)
+    except TypeError:
+        return False
