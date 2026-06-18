@@ -126,6 +126,7 @@ def scan_txt(
     separator=None,
     new_columns=None,
     has_header=False,
+    keep_line=False,
     *args,
     **kwargs,
 ):
@@ -151,6 +152,8 @@ def scan_txt(
         Whether the text files have a header line that should be skipped. The header
         must have the same delimiter as the separator provided in `separator`.
         (Default: False)
+    keep_line : :obj:`bool`
+        Whether to keep the original line as a column in the output. 
     *args
         Positional arguments to pass to :meth:`polars.scan_csv`.
     **kwargs
@@ -185,7 +188,10 @@ def scan_txt(
         # Separate line into fields by separator
         lf = lf.with_columns(
             pl.col("line").str.split(separator, literal=False).alias("fields")
-        ).drop("line")
+        )
+
+        if not keep_line:
+            lf = lf.drop("line")
 
         # Count the number of fields; must be consistent across all rows
         n_fields = lf.select(pl.col("fields").list.len().unique()).collect()
