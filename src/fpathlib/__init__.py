@@ -4,6 +4,7 @@ from fpathlib.path import (
     ExpandedFPath,
     expand_fpath,
     expand_fpath_decorator,
+    is_expandable,
 )
 
 from fpathlib.ext import polars
@@ -14,5 +15,6 @@ __all__ = [
     "ExpandedFPath",
     "expand_fpath",
     "expand_fpath_decorator",
+    "is_expandable",
     "polars",
 ]
