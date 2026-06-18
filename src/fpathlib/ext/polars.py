@@ -118,8 +118,8 @@ def scan_csv(expanded_fpath, *args, **kwargs):
 
     return lf
 
-# TODO this is not really a drop-in replacement because it will break if source is a list
-@expand_fpath_decorator(post_process=join_metadata)
+# TODO rename expanded_fpath as source
+@expand_fpath_decorator(require_expandable=False, post_process=join_metadata)
 def scan_txt(
     expanded_fpath,
     filter_expr=None,
