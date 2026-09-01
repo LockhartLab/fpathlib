@@ -229,7 +229,7 @@ def scan_txt(
         # Infer dtypes?
         if kwargs.get("infer_schema", True):
             sample = (
-                lf0
+                lf
                 .head(kwargs.get("infer_schema_length", 100))
                 .collect()
                 .write_csv()
