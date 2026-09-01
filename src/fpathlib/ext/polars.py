@@ -118,6 +118,8 @@ def scan_csv(expanded_fpath, *args, **kwargs):
     return lf
 
 # TODO rename expanded_fpath as source
+# TODO this gets very slow when expanded_fpath contains thousands of files
+# I turned on streaming to fix this, but streaming is also slow. expanded_fpath[0] is the answer
 @expand_fpath_decorator(require_expandable=False, post_process=join_metadata)
 def scan_txt(
     expanded_fpath,
@@ -175,21 +177,7 @@ def scan_txt(
         new_columns=["line"],
         has_header=False,
         **kwargs,
-    )
-
-    expanded_fpath0 = expanded_fpath
-    if isinstance(expanded_fpath, ExpandedFPath):
-        expanded_fpath0 = expanded_fpath[0]
-    lf0 = scan_txt(
-        expanded_fpath0,
-        filter_expr=filter_expr,
-        separator=separator,
-        new_columns=new_columns,
-        has_header=has_header,
-        keep_line=keep_line,
-        *args,
-        **kwargs,
-    ).head(kwargs.get("infer_schema_length", 100))
+    )        
             
     # Can filter lines before doing any further processing
     # This could be to remove lines with comments, etc.
@@ -207,7 +195,7 @@ def scan_txt(
             lf = lf.drop("line")
 
         # Count the number of fields
-        n_fields = lf0.select(pl.col("fields").list.len().unique()).collect().item()
+        n_fields = lf.head(1).select(pl.col("fields").list.len().unique()).collect(engine="streaming").item()
         
         # Initial field names, may be renamed later from header or by `new_columns`
         fields = [f"field_{i}" for i in range(n_fields)]
@@ -239,7 +227,7 @@ def scan_txt(
         # Infer dtypes?
         if kwargs.get("infer_schema", True):
             sample = (
-                lf0.collect()
+                lf.head(kwargs.get("infer_schema_length", 100)).collect(engine="streaming")
                 .write_csv()
                 .encode()
             )
