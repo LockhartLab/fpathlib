@@ -117,6 +117,36 @@ def scan_csv(expanded_fpath, *args, **kwargs):
 
     return lf
 
+@expand_fpath_decorator(post_process=join_metadata)
+def scan_parquet(expanded_fpath, *args, **kwargs):
+    """
+    Scan the paths in the collection as a parquet file, and return a
+    :obj:`polars.LazyFrame` along with the metadata captured from the path
+    variables.
+
+    Parameters
+    ----------
+    expanded_fpath : :obj:`fpathlib.ExpandedFPath`
+        An expanded f-string path.
+    *args
+        Positional arguments to pass to :meth:`polars.scan_parquet`.
+    **kwargs
+        Keyword arguments to pass to :meth:`polars.scan_parquet`.
+
+    Returns
+    -------
+    :obj:`polars.LazyFrame`
+    """
+
+    lf = pl.scan_parquet(
+        expanded_fpath,
+        include_file_paths="fname",
+        *args,
+        **kwargs,
+    )
+
+    return lf
+
 # TODO rename expanded_fpath as source
 # TODO this gets very slow when expanded_fpath contains thousands of files
 # I turned on streaming to fix this, but streaming is also slow. expanded_fpath[0] is the answer
