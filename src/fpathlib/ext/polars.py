@@ -178,6 +178,20 @@ def scan_txt(
         **kwargs,
     )
 
+    lf0 = lf
+    if len(expanded_fpath) > 1:
+        lf0 = scan_txt(
+            expanded_fpath[0],
+            filter_expr,
+            separator,
+            new_columns,
+            has_header,
+            keep_line,
+            *args,
+            **kwargs,
+        )
+    lf0 = lf0.head(kwargs.get("infer_schema_length", 100))
+
     # Can filter lines before doing any further processing
     # This could be to remove lines with comments, etc.
     if filter_expr is not None:
@@ -194,7 +208,7 @@ def scan_txt(
             lf = lf.drop("line")
 
         # Count the number of fields; must be consistent across all rows
-        n_fields = lf.select(pl.col("fields").list.len().unique()).collect()
+        n_fields = lf0.select(pl.col("fields").list.len().unique()).collect()
         if n_fields.shape[0] > 1:
             msg = "inconsistent number of fields", n_fields
             raise ValueError(msg)
@@ -230,7 +244,7 @@ def scan_txt(
         # Infer dtypes?
         if kwargs.get("infer_schema", True):
             sample = (
-                lf.head(kwargs.get("infer_schema_length", 100))
+                lf0
                 .collect()
                 .write_csv()
                 .encode()
