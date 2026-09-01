@@ -1,8 +1,7 @@
 from functools import wraps
 from polars import *
 import polars as pl
-from fpathlib import expand_fpath_decorator
-
+from fpathlib import expand_fpath_decorator, ExpandedFPath
 
 def join_metadata(df, expanded_fpath):
     return df.join(
@@ -179,7 +178,7 @@ def scan_txt(
     )
 
     lf0 = lf
-    if len(expanded_fpath) > 1:
+    if isinstance(expanded_fpath, ExpandedFPath):
         lf0 = scan_txt(
             expanded_fpath[0],
             filter_expr,
