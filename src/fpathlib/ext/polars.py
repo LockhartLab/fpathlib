@@ -3,6 +3,7 @@ from polars import *
 import polars as pl
 from fpathlib import expand_fpath_decorator, ExpandedFPath
 
+
 def join_metadata(df, expanded_fpath):
     return df.join(
         expanded_fpath.to_polars(lazy=isinstance(df, pl.LazyFrame)),
@@ -117,6 +118,7 @@ def scan_csv(expanded_fpath, *args, **kwargs):
 
     return lf
 
+
 @expand_fpath_decorator(post_process=join_metadata)
 def scan_parquet(expanded_fpath, *args, **kwargs):
     """
@@ -146,6 +148,7 @@ def scan_parquet(expanded_fpath, *args, **kwargs):
     )
 
     return lf
+
 
 # TODO rename expanded_fpath as source
 # TODO this gets very slow when expanded_fpath contains thousands of files
@@ -185,7 +188,7 @@ def scan_txt(
         must have the same delimiter as the separator provided in `separator`.
         (Default: False)
     keep_line : :obj:`bool`
-        Whether to keep the original line as a column in the output. 
+        Whether to keep the original line as a column in the output.
     usecols : :obj:`list`[:obj:`int`], optional
         Indexes of columns to keep in the output. If not provided, all columns are kept. Only applicable if `separator` is provided.
     *args
@@ -210,8 +213,8 @@ def scan_txt(
         new_columns=["line"],
         has_header=False,
         **kwargs,
-    )        
-            
+    )
+
     # Can filter lines before doing any further processing
     # This could be to remove lines with comments, etc.
     if filter_expr is not None:
@@ -227,8 +230,8 @@ def scan_txt(
         if not keep_line:
             lf = lf.drop("line")
 
-        # Set the columns to use for the fields. 
-        # Either specify a subset of columns to use, or use all columns 
+        # Set the columns to use for the fields.
+        # Either specify a subset of columns to use, or use all columns
         if usecols is not None:
             fields = {}
             for col in usecols:
@@ -236,18 +239,19 @@ def scan_txt(
 
         else:
             # Count the number of fields
-            n_fields = lf.head(1).select(pl.col("fields").list.len().unique()).collect(engine="streaming").item()
-        
+            n_fields = (
+                lf.head(1)
+                .select(pl.col("fields").list.len().unique())
+                .collect(engine="streaming")
+                .item()
+            )
+
             # Initial field names, may be renamed later from header or by `new_columns`
             fields = {i: f"field_{i}" for i in range(n_fields)}
 
-
         # Add each field as a separate column
         lf = lf.with_columns(
-            [
-                pl.col("fields").list.get(i).alias(field)
-                for i, field in fields.items()
-            ]
+            [pl.col("fields").list.get(i).alias(field) for i, field in fields.items()]
         ).drop("fields")
 
         # LazyFrame does not guarantee order, so the header might not be the first row
@@ -265,13 +269,17 @@ def scan_txt(
         # Apply new column names if provided
         if new_columns is not None:
             lf = lf.rename(
-                {field: new_column for field, new_column in zip(fields.keys(), new_columns)}
+                {
+                    field: new_column
+                    for field, new_column in zip(fields.keys(), new_columns)
+                }
             )
 
         # Infer dtypes?
         if kwargs.get("infer_schema", True):
             sample = (
-                lf.head(kwargs.get("infer_schema_length", 100)).collect(engine="streaming")
+                lf.head(kwargs.get("infer_schema_length", 100))
+                .collect(engine="streaming")
                 .write_csv()
                 .encode()
             )
