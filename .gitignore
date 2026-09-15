@@ -3,3 +3,5 @@ src/fpathlib.egg-info
 docs/build
 .pytest_cache
 dist
+build
+src/fpathlib/_version.py
