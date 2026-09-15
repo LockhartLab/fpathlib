@@ -1,7 +1,6 @@
-from fpathlib.path import (
-    Path,
-    FPath,
-    ExpandedFPath,
+from fpathlib.path import Path
+from fpathlib.fpath import FPath, ExpandedFPath
+from fpathlib.expand import (
     expand_fpath,
     expand_fpath_decorator,
     is_expandable,
