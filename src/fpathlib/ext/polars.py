@@ -1,12 +1,12 @@
 from functools import wraps
 from polars import *
-import polars as pl
+import polars as _polars
 from fpathlib import expand_fpath_decorator, ExpandedFPath
 
 
 def join_metadata(df, expanded_fpath):
     return df.join(
-        expanded_fpath.to_polars(lazy=isinstance(df, pl.LazyFrame)),
+        expanded_fpath.to_polars(lazy=isinstance(df, LazyFrame)),
         on="fname",
     )
 
@@ -109,7 +109,7 @@ def scan_csv(expanded_fpath, *args, **kwargs):
     :obj:`polars.LazyFrame`
     """
 
-    lf = pl.scan_csv(
+    lf = _polars.scan_csv(
         expanded_fpath,
         include_file_paths="fname",
         *args,
@@ -140,7 +140,7 @@ def scan_parquet(expanded_fpath, *args, **kwargs):
     :obj:`polars.LazyFrame`
     """
 
-    lf = pl.scan_parquet(
+    lf = _polars.scan_parquet(
         expanded_fpath,
         include_file_paths="fname",
         *args,
@@ -206,7 +206,7 @@ def scan_txt(
 
     # TODO schema and schema_overrides is probably broken
 
-    lf = pl.scan_csv(
+    lf = _polars.scan_csv(
         expanded_fpath,
         include_file_paths="fname",
         separator="\n",
@@ -224,7 +224,7 @@ def scan_txt(
     if separator is not None:
         # Separate line into fields by separator
         lf = lf.with_columns(
-            pl.col("line").str.split(separator, literal=False).alias("fields")
+            col("line").str.split(separator, literal=False).alias("fields")
         )
 
         if not keep_line:
@@ -241,7 +241,7 @@ def scan_txt(
             # Count the number of fields
             n_fields = (
                 lf.head(1)
-                .select(pl.col("fields").list.len().unique())
+                .select(col("fields").list.len().unique())
                 .collect(engine="streaming")
                 .item()
             )
@@ -251,7 +251,7 @@ def scan_txt(
 
         # Add each field as a separate column
         for i, field in fields.items():
-            lf = lf.with_columns(pl.col("fields").list.get(i).alias(field))
+            lf = lf.with_columns(col("fields").list.get(i).alias(field))
         lf = lf.drop("fields")
 
         # LazyFrame does not guarantee order, so the header might not be the first row
@@ -279,7 +279,7 @@ def scan_txt(
                 .write_csv()
                 .encode()
             )
-            inferred_schema = pl.read_csv(sample).schema
+            inferred_schema = _polars.read_csv(sample).schema
             lf = lf.cast(inferred_schema)
 
     return lf
