@@ -245,8 +245,10 @@ def scan_txt(
         # the dtype-inference branch further down.
         infer_schema = kwargs.get("infer_schema", True)
         sample_schema = None
-        if isinstance(expanded_fpath, ExpandedFPath) and len(expanded_fpath) > 1 and (
-            usecols is None or infer_schema
+        if (
+            isinstance(expanded_fpath, ExpandedFPath)
+            and len(expanded_fpath) > 1
+            and (usecols is None or infer_schema)
         ):
             sample_schema = scan_txt(
                 expanded_fpath[0],
