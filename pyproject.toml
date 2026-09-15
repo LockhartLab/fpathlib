@@ -13,7 +13,7 @@ dynamic = ["version"]
 description = "A package to combine paths with metadata"
 authors = [{ name="C. Lockhart", email="clockha2@gmu.edu" }]
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.12"
 dependencies = [
     "parse",
 ]

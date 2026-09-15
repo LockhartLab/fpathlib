@@ -238,6 +238,7 @@ def scan_txt(
 
         else:
             # Count the number of fields
+            # This is slow!
             n_fields = (
                 lf.head(1)
                 .select(_polars.col("fields").list.len().unique())
