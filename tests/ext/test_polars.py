@@ -1,13 +1,12 @@
 import re
 import tarfile
-from glob import glob
 from pathlib import Path
 
 import pytest
 
 from fpathlib.ext import polars as pl
 
-testcases = sorted(glob("testcases/*.tgz"))
+testcases = sorted((Path(__file__).parent / "testcases").glob("*.tgz"))
 
 
 @pytest.fixture
