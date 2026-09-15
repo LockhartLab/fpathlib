@@ -250,9 +250,9 @@ def scan_txt(
             fields = {i: f"field_{i}" for i in range(n_fields)}
 
         # Add each field as a separate column
-        lf = lf.with_columns(
-            [pl.col("fields").list.get(i).alias(field) for i, field in fields.items()]
-        ).drop("fields")
+        for i, field in fields.items():
+            lf = lf.with_columns(pl.col("fields").list.get(i).alias(field))
+        lf = lf.drop("fields")
 
         # LazyFrame does not guarantee order, so the header might not be the first row
         # This can be fixed by scan_csv with include_row_index. But this seems clunky
@@ -268,12 +268,8 @@ def scan_txt(
 
         # Apply new column names if provided
         if new_columns is not None:
-            lf = lf.rename(
-                {
-                    field: new_column
-                    for field, new_column in zip(fields.keys(), new_columns)
-                }
-            )
+            for field, new_column in zip(fields.keys(), new_columns):
+                lf = lf.rename({field: new_column})
 
         # Infer dtypes?
         if kwargs.get("infer_schema", True):
