@@ -1,12 +1,16 @@
 from functools import wraps
-from polars import *
 import polars as _polars
 from fpathlib import expand_fpath_decorator, ExpandedFPath
 
-# `from polars import *` above shadows several builtins with polars expression
-# functions of the same name (e.g. `list`, `len`) -- this alias keeps the real
-# builtin `len` available under a name that won't collide. Watch for `list` too.
-from builtins import len as _len
+
+def __getattr__(name):
+    # Delegates any attribute this module doesn't define itself to the real
+    # polars module, so `fpathlib.ext.polars` remains a drop-in replacement for
+    # `import polars` (pl.DataFrame, pl.col, pl.List, etc. all still resolve).
+    # Unlike `from polars import *`, this only kicks in for names Python didn't
+    # already find defined here, so it can't silently shadow builtins like
+    # `list` or `len` for this module's own implementation code.
+    return getattr(_polars, name)
 
 def join_metadata(df, expanded_fpath):
     return df.join(
@@ -241,7 +245,7 @@ def scan_txt(
         # the dtype-inference branch further down.
         infer_schema = kwargs.get("infer_schema", True)
         sample_schema = None
-        if isinstance(expanded_fpath, ExpandedFPath) and _len(expanded_fpath) > 1 and (
+        if isinstance(expanded_fpath, ExpandedFPath) and len(expanded_fpath) > 1 and (
             usecols is None or infer_schema
         ):
             sample_schema = scan_txt(
@@ -263,7 +267,7 @@ def scan_txt(
 
         else:
             if sample_schema is not None:
-                n_fields = _len(sample_schema) - 1  # minus 'fname'
+                n_fields = len(sample_schema) - 1  # minus 'fname'
             else:
                 n_fields = (
                     lf.head(1)
