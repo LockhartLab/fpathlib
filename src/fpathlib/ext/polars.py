@@ -12,6 +12,7 @@ def __getattr__(name):
     # `list` or `len` for this module's own implementation code.
     return getattr(_polars, name)
 
+
 def join_metadata(df, expanded_fpath):
     return df.join(
         expanded_fpath.to_polars(lazy=isinstance(df, _polars.LazyFrame)),
@@ -307,7 +308,9 @@ def scan_txt(
         if infer_schema:
             if sample_schema is not None:
                 inferred_schema = {
-                    name: dtype for name, dtype in sample_schema.items() if name != "fname"
+                    name: dtype
+                    for name, dtype in sample_schema.items()
+                    if name != "fname"
                 }
             else:
                 sample = (
