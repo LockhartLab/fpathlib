@@ -23,7 +23,7 @@ fi
 tag="${parts[0]}.${parts[1]}.${parts[2]}"
 
 git add -A
-git commit -m "tag $tag"
+git commit --allow-empty -m "tag $tag"
 git push origin main
 
 git checkout main
