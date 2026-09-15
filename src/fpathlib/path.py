@@ -289,26 +289,36 @@ def expand_fpath_decorator(f=None, require_expandable=True, post_process=None):
     def decorator(f):
         @wraps(f)
         def wrapper(fpath, *args, **kwargs):
-            # What happens if fpath is not expandable? 
-            # If require_expandable is True, raise an error. 
-            # Otherwise, just call f with the original fpath.
-            if not is_expandable(fpath):
-                if require_expandable:
-                    msg = f"fpath '{fpath}' is not expandable"
-                    raise ValueError(msg)
-                return f(fpath, *args, **kwargs)  
+            # If fpath is an :obj:`ExpandedFPath`, just call f with it.
+            if isinstance(fpath, ExpandedFPath):
+                expanded_fpath = fpath
+                result = f(fpath, *args, **kwargs)
 
-            # We know fpath is expandable, so we can expand it and call f 
-            exclude_path_patterns = kwargs.pop("exclude_path_patterns", None)
-            require_metadata = kwargs.pop("require_metadata", True)
-            expanded_fpath = expand_fpath(
-                fpath,
-                exclude_path_patterns=exclude_path_patterns,
-                require_metadata=require_metadata,
-            )
-            result = f(expanded_fpath, *args, **kwargs)
+            # Otherwise, expand fpath and call f with the result.
+            else:
+                # What happens if fpath is not expandable? 
+                # If require_expandable is True, raise an error. 
+                # Otherwise, just call f with the original fpath.
+                if not is_expandable(fpath):
+                    if require_expandable:
+                        msg = f"fpath not expandable: '{fpath}'"
+                        raise ValueError(msg)
+                    return f(fpath, *args, **kwargs)  
+    
+                # We know fpath is expandable, so we can expand it and call f 
+                exclude_path_patterns = kwargs.pop("exclude_path_patterns", None)
+                require_metadata = kwargs.pop("require_metadata", True)
+                expanded_fpath = expand_fpath(
+                    fpath,
+                    exclude_path_patterns=exclude_path_patterns,
+                    require_metadata=require_metadata,
+                )
+                result = f(expanded_fpath, *args, **kwargs)
+
+            # If post_process is provided, call it with the result and the expanded_fpath.
             if post_process is not None:
                 result = post_process(result, expanded_fpath)
+
             return result
 
         return wrapper
