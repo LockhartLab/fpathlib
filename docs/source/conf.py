@@ -20,7 +20,11 @@ release = '0.1.0'
 
 extensions = [
     "sphinx.ext.autodoc",
+    "sphinx.ext.napoleon",
 ]
+
+napoleon_numpy_docstring = True
+napoleon_google_docstring = False
 
 templates_path = ['_templates']
 exclude_patterns = []
