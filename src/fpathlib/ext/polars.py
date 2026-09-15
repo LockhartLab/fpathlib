@@ -3,6 +3,11 @@ from polars import *
 import polars as _polars
 from fpathlib import expand_fpath_decorator, ExpandedFPath
 
+# `from polars import *` above shadows several builtins with polars expression
+# functions of the same name (e.g. `list`, `len`) -- this alias keeps the real
+# builtin `len` available under a name that won't collide. Watch for `list` too.
+from builtins import len as _len
+
 def join_metadata(df, expanded_fpath):
     return df.join(
         expanded_fpath.to_polars(lazy=isinstance(df, _polars.LazyFrame)),
@@ -150,8 +155,6 @@ def scan_parquet(expanded_fpath, *args, **kwargs):
 
 
 # TODO rename expanded_fpath as source
-# TODO this gets very slow when expanded_fpath contains thousands of files
-# I turned on streaming to fix this, but streaming is also slow. expanded_fpath[0] is the answer
 @expand_fpath_decorator(require_expandable=False, post_process=join_metadata)
 def scan_txt(
     expanded_fpath,
@@ -229,6 +232,28 @@ def scan_txt(
         if not keep_line:
             lf = lf.drop("line")
 
+        # With many matched files, inferring the field count/dtypes directly
+        # against the full glob is extremely slow (every file has to be opened
+        # before a `.head()` takes effect). Instead, recurse on a single
+        # representative file -- expanded_fpath[0] -- and reuse its already-cheap
+        # (single-file) inference below instead of duplicating it here. Computed
+        # once here since it's needed by both the field-count branch below and
+        # the dtype-inference branch further down.
+        infer_schema = kwargs.get("infer_schema", True)
+        sample_schema = None
+        if isinstance(expanded_fpath, ExpandedFPath) and _len(expanded_fpath) > 1 and (
+            usecols is None or infer_schema
+        ):
+            sample_schema = scan_txt(
+                expanded_fpath[0],
+                filter_expr=filter_expr,
+                separator=separator,
+                new_columns=new_columns,
+                has_header=has_header,
+                usecols=usecols,
+                **kwargs,
+            ).collect_schema()
+
         # Set the columns to use for the fields.
         # Either specify a subset of columns to use, or use all columns
         if usecols is not None:
@@ -237,14 +262,15 @@ def scan_txt(
                 fields[col] = f"field_{col}"
 
         else:
-            # Count the number of fields
-            # This is slow!
-            n_fields = (
-                lf.head(1)
-                .select(_polars.col("fields").list.len().unique())
-                .collect(engine="streaming")
-                .item()
-            )
+            if sample_schema is not None:
+                n_fields = _len(sample_schema) - 1  # minus 'fname'
+            else:
+                n_fields = (
+                    lf.head(1)
+                    .select(_polars.col("fields").list.len().unique())
+                    .collect()
+                    .item()
+                )
 
             # Initial field names, may be renamed later from header or by `new_columns`
             fields = {i: f"field_{i}" for i in range(n_fields)}
@@ -272,14 +298,19 @@ def scan_txt(
                 lf = lf.rename({field: new_column})
 
         # Infer dtypes?
-        if kwargs.get("infer_schema", True):
-            sample = (
-                lf.head(kwargs.get("infer_schema_length", 100))
-                .collect(engine="streaming")
-                .write_csv()
-                .encode()
-            )
-            inferred_schema = _polars.read_csv(sample).schema
+        if infer_schema:
+            if sample_schema is not None:
+                inferred_schema = {
+                    name: dtype for name, dtype in sample_schema.items() if name != "fname"
+                }
+            else:
+                sample = (
+                    lf.head(kwargs.get("infer_schema_length", 100))
+                    .collect()
+                    .write_csv()
+                    .encode()
+                )
+                inferred_schema = _polars.read_csv(sample).schema
             lf = lf.cast(inferred_schema)
 
     return lf
