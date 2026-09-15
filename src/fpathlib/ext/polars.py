@@ -158,6 +158,7 @@ def scan_txt(
     new_columns=None,
     has_header=False,
     keep_line=False,
+    usecols=None,
     *args,
     **kwargs,
 ):
@@ -185,6 +186,8 @@ def scan_txt(
         (Default: False)
     keep_line : :obj:`bool`
         Whether to keep the original line as a column in the output. 
+    usecols : :obj:`list`[:obj:`int`], optional
+        Indexes of columns to keep in the output. If not provided, all columns are kept. Only applicable if `separator` is provided.
     *args
         Positional arguments to pass to :meth:`polars.scan_csv`.
     **kwargs
@@ -224,12 +227,22 @@ def scan_txt(
         if not keep_line:
             lf = lf.drop("line")
 
-        # Count the number of fields
-        n_fields = lf.head(1).select(pl.col("fields").list.len().unique()).collect(engine="streaming").item()
-        
-        # Initial field names, may be renamed later from header or by `new_columns`
-        fields = [f"field_{i}" for i in range(n_fields)]
+        # Set the columns to use for the fields. 
+        # Either specify a subset of columns to use, or use all columns 
+        if usecols is not None:
+            fields = []
+            for col in usecols:
+                fields.append(f"field_{col}")
 
+        else:
+            # Count the number of fields
+            n_fields = lf.head(1).select(pl.col("fields").list.len().unique()).collect(engine="streaming").item()
+        
+            # Initial field names, may be renamed later from header or by `new_columns`
+            fields = [f"field_{i}" for i in range(n_fields)]
+
+
+        # Add each field as a separate column
         lf = lf.with_columns(
             [
                 pl.col("fields").list.get(i).alias(field)
@@ -249,6 +262,7 @@ def scan_txt(
             """
             raise NotImplementedError
 
+        # Apply new column names if provided
         if new_columns is not None:
             lf = lf.rename(
                 {field: new_column for field, new_column in zip(fields, new_columns)}

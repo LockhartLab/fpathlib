@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: fpathlib
-Version: 0.1.1.dev4
+Version: 0.1.1.dev12
 Summary: A package to combine paths with metadata
 Author-email: "C. Lockhart" <clockha2@gmu.edu>
 Requires-Python: >=3.9

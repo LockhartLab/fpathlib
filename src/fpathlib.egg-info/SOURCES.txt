@@ -1,3 +1,4 @@
+.gitignore
 LICENSE
 README.md
 TODO.txt
@@ -60,5 +61,6 @@ src/fpathlib/ext/__pycache__/__init__.cpython-313.pyc
 src/fpathlib/ext/__pycache__/polars.cpython-313.pyc
 tests/test_path.py
 tests/test_polars.py
+tests/testcases/job0.0.log
 tests/testcases/testcase1.tgz
 tests/testcases/testcase2.tgz
