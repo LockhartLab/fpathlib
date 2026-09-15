@@ -230,23 +230,23 @@ def scan_txt(
         # Set the columns to use for the fields. 
         # Either specify a subset of columns to use, or use all columns 
         if usecols is not None:
-            fields = []
+            fields = {}
             for col in usecols:
-                fields.append(f"field_{col}")
+                fields[col] = f"field_{col}"
 
         else:
             # Count the number of fields
             n_fields = lf.head(1).select(pl.col("fields").list.len().unique()).collect(engine="streaming").item()
         
             # Initial field names, may be renamed later from header or by `new_columns`
-            fields = [f"field_{i}" for i in range(n_fields)]
+            fields = {i: f"field_{i}" for i in range(n_fields)}
 
 
         # Add each field as a separate column
         lf = lf.with_columns(
             [
                 pl.col("fields").list.get(i).alias(field)
-                for i, field in enumerate(fields)
+                for i, field in fields.items()
             ]
         ).drop("fields")
 
@@ -265,7 +265,7 @@ def scan_txt(
         # Apply new column names if provided
         if new_columns is not None:
             lf = lf.rename(
-                {field: new_column for field, new_column in zip(fields, new_columns)}
+                {field: new_column for field, new_column in zip(fields.keys(), new_columns)}
             )
 
         # Infer dtypes?
