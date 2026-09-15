@@ -3,10 +3,9 @@ from polars import *
 import polars as _polars
 from fpathlib import expand_fpath_decorator, ExpandedFPath
 
-
 def join_metadata(df, expanded_fpath):
     return df.join(
-        expanded_fpath.to_polars(lazy=isinstance(df, LazyFrame)),
+        expanded_fpath.to_polars(lazy=isinstance(df, _polars.LazyFrame)),
         on="fname",
     )
 
@@ -224,7 +223,7 @@ def scan_txt(
     if separator is not None:
         # Separate line into fields by separator
         lf = lf.with_columns(
-            col("line").str.split(separator, literal=False).alias("fields")
+            _polars.col("line").str.split(separator, literal=False).alias("fields")
         )
 
         if not keep_line:
@@ -241,7 +240,7 @@ def scan_txt(
             # Count the number of fields
             n_fields = (
                 lf.head(1)
-                .select(col("fields").list.len().unique())
+                .select(_polars.col("fields").list.len().unique())
                 .collect(engine="streaming")
                 .item()
             )
@@ -251,7 +250,7 @@ def scan_txt(
 
         # Add each field as a separate column
         for i, field in fields.items():
-            lf = lf.with_columns(col("fields").list.get(i).alias(field))
+            lf = lf.with_columns(_polars.col("fields").list.get(i).alias(field))
         lf = lf.drop("fields")
 
         # LazyFrame does not guarantee order, so the header might not be the first row
@@ -261,7 +260,7 @@ def scan_txt(
             first_row = lf.head(1).collect()
             header.to_pandas().transpose()[0].to_dict()
             lf = lf.slice(offset=1, length=None)
-            header = first_row.select(pl.col(fields)).to_dict(as_series=False)
+            header = first_row.select(_polars.col(fields)).to_dict(as_series=False)
             lf = lf.rename({field: header[field][0] for field in fields})
             """
             raise NotImplementedError
