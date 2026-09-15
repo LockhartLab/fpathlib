@@ -268,7 +268,7 @@ def scan_txt(
 
         # Apply new column names if provided
         if new_columns is not None:
-            for field, new_column in zip(fields.keys(), new_columns):
+            for field, new_column in zip(fields.values(), new_columns):
                 lf = lf.rename({field: new_column})
 
         # Infer dtypes?
