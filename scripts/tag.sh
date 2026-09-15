@@ -1,6 +1,8 @@
+set -e
+
 m=$1
 
-tag=$(git tag)
+tag=$(git describe --tags --abbrev=0)
 parts=(${tag//./ })
 if [ "$m" == "major" ]
 then
