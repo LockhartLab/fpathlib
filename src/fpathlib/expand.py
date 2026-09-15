@@ -38,9 +38,9 @@ def expand_fpath_decorator(f=None, require_expandable=True, post_process=None):
     Parameters
     ----------
     f : :obj:`callable`
-        A function that takes an :ref:`.ExpandedFPath` as its first argument.
+        A function that takes an :obj:`.ExpandedFPath` as its first argument.
     post_process : :obj:`callable`
-        A function that takes the output of `f` and the :ref:`.ExpandedFPath`.
+        A function that takes the output of `f` and the :obj:`.ExpandedFPath`.
         (Default: None).
     """
 
