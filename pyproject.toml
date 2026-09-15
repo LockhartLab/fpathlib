@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "black", "sphinx"]
+dev = ["pytest", "black", "sphinx", "polars"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

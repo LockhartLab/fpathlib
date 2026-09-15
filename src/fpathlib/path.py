@@ -342,7 +342,7 @@ def is_expandable(fpath):
     """
 
     try: 
-        parser = parse.compile(fpath)
+        parser = parse.compile(str(fpath))
         return bool(parser.named_fields)
     except TypeError:
         return False
