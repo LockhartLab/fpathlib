@@ -1,0 +1,39 @@
+{% set name = "fpathlib" %}
+{% set version = "0.1.3" %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+  url: https://pypi.io/packages/source/{{ name[0] }}/{{ name }}/fpathlib-{{ version }}.tar.gz
+  sha256: 059dbf937c6e965ef33f15aa214b2f354550d5dfa26b9030357954cce8c51874
+
+build:
+  noarch: python
+  number: 0
+  script: {{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
+
+requirements:
+  host:
+    - python >=3.12
+    - pip
+    - setuptools >=68
+    - setuptools_scm
+    - wheel
+  run:
+    - python >=3.12
+    - parse
+
+test:
+  imports:
+    - fpathlib
+
+about:
+  summary: A package to combine paths with metadata
+  license: MIT
+  home: https://github.com/LockhartLab/fpathlib
+
+extra:
+  recipe-maintainers:
+    - clockhart
