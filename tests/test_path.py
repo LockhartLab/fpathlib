@@ -128,6 +128,33 @@ class TestFPath:
         with pytest.raises(ValueError):
             fpath.expand(errors="bogus")
 
+    def test_expand_rejects_wildcard_mixed_with_capture(self, tree):
+        # "*" outside a {} capture is glob syntax to glob() but a literal
+        # character to `parse` -- mixing them is not supported, and should
+        # fail clearly rather than silently returning metadata=None or a
+        # confusing "metadata not found" error.
+        fpath = FPath(str(tree / "tr{trajectory:d}/*"))
+        with pytest.raises(ValueError, match=r"\*"):
+            fpath.expand()
+
+    def test_expand_rejects_qmark_mixed_with_capture(self, tree):
+        fpath = FPath(str(tree / "tr{trajectory:d}/job?.log"))
+        with pytest.raises(ValueError, match=r"\?"):
+            fpath.expand()
+
+    def test_expand_rejects_bracket_mixed_with_capture(self, tree):
+        fpath = FPath(str(tree / "tr{trajectory:d}/job[12].log"))
+        with pytest.raises(ValueError, match=r"\["):
+            fpath.expand()
+
+    def test_expand_allows_wildcard_with_no_capture(self, tree):
+        # A plain glob (no {} at all) is a separate, unaffected case --
+        # metadata=None is expected there, not an error.
+        fpath = FPath(str(tree / "tr1/*.log"))
+        expanded = fpath.expand(require_metadata=False)
+        assert len(expanded) == 2
+        assert all(p.metadata is None for p in expanded)
+
 
 class TestExpandedFPath:
     def test_duplicate_paths_raise(self):

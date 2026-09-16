@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+import fpathlib
 from fpathlib.ext import polars as pl
 
 testcases = sorted((Path(__file__).parent / "testcases").glob("*.tgz"))
@@ -186,3 +187,96 @@ def test_scan_txt(testcase):
         df.select(pl.col("job").unique().len()).collect().item()
         == expected_uniques["job"]
     )
+
+
+class TestExpandedFPathToPolars:
+    def test_none_metadata_becomes_empty_columns(self, tmp_path):
+        # expand_fpath(..., require_metadata=False) on a pattern with no
+        # named captures leaves metadata=None for every match -- to_polars()
+        # used to crash on `**None` there; it should just produce a frame
+        # with no metadata columns instead.
+        (tmp_path / "a.log").write_text("data\n")
+        (tmp_path / "b.log").write_text("data\n")
+
+        ex = fpathlib.expand_fpath(str(tmp_path / "*.log"), require_metadata=False)
+        df = ex.to_polars()
+
+        assert df.columns == ["fname"]
+        assert df.height == 2
+
+    def test_mixed_none_and_real_metadata(self, tmp_path):
+        (tmp_path / "trX").mkdir()
+        (tmp_path / "trX" / "jobY.log").write_text("bad\n")
+        (tmp_path / "tr1").mkdir()
+        (tmp_path / "tr1" / "job1.log").write_text("good\n")
+
+        ex = fpathlib.expand_fpath(
+            str(tmp_path / "tr{trajectory:d}/job{job:d}.log"),
+            require_metadata=False,
+        )
+        df = ex.to_polars()
+
+        assert set(df.columns) == {"fname", "trajectory", "job"}
+        assert df["trajectory"].null_count() == 1
+
+
+class TestScanTxtValidateSchema:
+    def _write(self, tmp_path, name, line):
+        (tmp_path / name).write_text(line + "\n")
+
+    def test_default_raises_on_extra_fields(self, tmp_path):
+        # sample file (tr1) has 3 fields; tr3 has 4 -- without validation
+        # the extra field would be silently dropped instead of erroring.
+        self._write(tmp_path, "tr1.log", "a b c")
+        self._write(tmp_path, "tr2.log", "a b c")
+        self._write(tmp_path, "tr3.log", "p q r s")
+
+        with pytest.raises(ValueError, match="field count mismatch"):
+            pl.scan_txt(
+                str(tmp_path / "tr{n:d}.log"),
+                separator=" ",
+                has_header=False,
+            ).collect()
+
+    def test_validate_schema_false_silently_truncates(self, tmp_path):
+        self._write(tmp_path, "tr1.log", "a b c")
+        self._write(tmp_path, "tr2.log", "a b c")
+        self._write(tmp_path, "tr3.log", "p q r s")
+
+        df = pl.scan_txt(
+            str(tmp_path / "tr{n:d}.log"),
+            separator=" ",
+            has_header=False,
+            validate_schema=False,
+        ).collect()
+
+        assert set(df.columns) == {"fname", "field_0", "field_1", "field_2", "n"}
+        row = df.filter(pl.col("n") == 3)
+        assert row["field_2"].item() == "r"  # "s" silently dropped
+
+    def test_consistent_fields_do_not_raise(self, tmp_path):
+        self._write(tmp_path, "tr1.log", "a b c")
+        self._write(tmp_path, "tr2.log", "d e f")
+
+        df = pl.scan_txt(
+            str(tmp_path / "tr{n:d}.log"),
+            separator=" ",
+            has_header=False,
+        ).collect()
+
+        assert df.height == 2
+
+    def test_fewer_fields_raises_regardless_of_validate_schema(self, tmp_path):
+        # A file with fewer fields than the sample already fails via
+        # polars' own out-of-bounds list access -- confirm that still
+        # happens with validate_schema explicitly disabled too.
+        self._write(tmp_path, "tr1.log", "a b c")
+        self._write(tmp_path, "tr2.log", "a b")
+
+        with pytest.raises(pl.exceptions.ComputeError):
+            pl.scan_txt(
+                str(tmp_path / "tr{n:d}.log"),
+                separator=" ",
+                has_header=False,
+                validate_schema=False,
+            ).collect()
