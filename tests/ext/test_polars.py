@@ -280,3 +280,24 @@ class TestScanTxtValidateSchema:
                 has_header=False,
                 validate_schema=False,
             ).collect()
+
+    def test_usecols_bypasses_validate_schema(self, tmp_path):
+        # Known limitation, not (yet) a bug: the validate_schema check only
+        # runs when the field set comes from schema inference (usecols is
+        # None). When usecols is given, n_fields/fields are built directly
+        # from it instead, so the check is structurally unreachable -- a
+        # real mismatch goes uncaught even with validate_schema=True.
+        self._write(tmp_path, "tr1.log", "a b c")
+        self._write(tmp_path, "tr2.log", "a b c")
+        self._write(tmp_path, "tr3.log", "p q r s")
+
+        df = pl.scan_txt(
+            str(tmp_path / "tr{n:d}.log"),
+            separator=" ",
+            has_header=False,
+            usecols=[0, 1],
+            validate_schema=True,
+        ).collect()
+
+        assert set(df.columns) == {"fname", "field_0", "field_1", "n"}
+        assert df.height == 3
