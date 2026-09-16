@@ -77,6 +77,11 @@ class FPath:
         to start processing before the full glob finishes walking the
         filesystem. :meth:`.expand` is built on top of this generator.
 
+        Like any generator function, nothing in the body runs -- including
+        argument validation and the wildcard/{} capture check -- until the
+        result is first iterated (a `for` loop, `list(...)`, etc.), not at
+        the moment :meth:`.iexpand` is called.
+
         Parameters
         ----------
         exclude_path_patterns : :obj:`str` or :obj:`Iterable`[:obj:`str`]
@@ -93,21 +98,12 @@ class FPath:
         :obj:`.Path`
         """
 
-        # Validate and compile eagerly, here in a plain (non-generator)
-        # method, so a bad `errors` value or an unsupported wildcard/{}
-        # mix raises as soon as iexpand() is called -- not deferred until
-        # whatever code actually starts iterating the result, which is the
-        # usual surprise with putting validation inside a generator
-        # function's body.
         if errors not in {"raise", "warn", "ignore"}:
             msg = f"invalid value for 'errors': {errors}"
             raise ValueError(msg)
 
         parser = self._compile_parser()
 
-        return self._iexpand(parser, exclude_path_patterns, require_metadata, errors)
-
-    def _iexpand(self, parser, exclude_path_patterns, require_metadata, errors):
         n = 0
         for fname in iglob(re.sub(r"\{.*?\}", "*", self.fpath)):
             path = Path(fname)

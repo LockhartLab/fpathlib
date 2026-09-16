@@ -235,18 +235,19 @@ class TestFPathIexpand:
         result = list(fpath.iexpand(errors="ignore"))
         assert result == []
 
-    def test_invalid_errors_value_raises_immediately(self, tmp_path):
-        # Validation happens eagerly when iexpand() is called, not lazily
-        # on first iteration -- calling it alone (no list()/for) is enough
-        # to raise.
+    def test_invalid_errors_value_raises_on_iteration(self, tmp_path):
+        # Like any generator function, validation happens lazily on first
+        # iteration, not when iexpand() is merely called.
         fpath = FPath(str(tmp_path / "nope{x:d}.log"))
+        gen = fpath.iexpand(errors="bogus")
         with pytest.raises(ValueError):
-            fpath.iexpand(errors="bogus")
+            next(gen)
 
-    def test_wildcard_mixed_with_capture_raises_immediately(self, tree):
+    def test_wildcard_mixed_with_capture_raises_on_iteration(self, tree):
         fpath = FPath(str(tree / "tr{trajectory:d}/*"))
+        gen = fpath.iexpand()
         with pytest.raises(ValueError, match=r"\*"):
-            fpath.iexpand()
+            next(gen)
 
 
 class TestIexpandFpath:
