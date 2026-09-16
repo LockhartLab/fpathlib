@@ -7,6 +7,111 @@ from .path import Path
 from .utils import import_optional_dependency
 
 
+@parse.with_pattern(r"[^/]*")
+def _glob_star(text):
+    return text
+
+
+@parse.with_pattern(r"[^/]")
+def _glob_qmark(text):
+    return text
+
+
+def _glob_class_type(regex):
+    @parse.with_pattern(regex)
+    def _type(text):
+        return text
+
+    return _type
+
+
+def _translate_wildcards(fpath):
+    """
+    A pattern like "{a}/*" is fed to two different libraries that disagree
+    about what a bare '*' means: `glob()` (used to actually find files)
+    treats it as a wildcard, but `parse` (used to pull out {a}'s value)
+    treats it as a literal asterisk character to match, since `parse`'s
+    pattern language only special-cases {...} -- everything else, including
+    '*', is literal text. That mismatch means a real file like "dir/x.txt"
+    is found by glob() but then fails to parse (or matches nothing) against
+    the very same string, since "dir/x.txt" doesn't literally contain "/*".
+
+    This rewrites the *parse* pattern only (never the glob pattern, which
+    already treats these characters correctly) so bare '*', '?', and
+    '[...]' outside a {} capture become anonymous, non-capturing parse
+    fields with equivalent (single-path-segment, non-slash-crossing) glob
+    semantics -- matched and consumed, but never added to `.named`
+    metadata, exactly like the literal text around them already isn't.
+
+    Returns
+    -------
+    :obj:`tuple`[:obj:`str`, :obj:`dict`]
+        The translated pattern, and the `extra_types` mapping to pass to
+        :func:`parse.compile`.
+    """
+
+    extra_types = {}
+    out = []
+    depth = 0
+    i = 0
+    n = len(fpath)
+    counter = 0
+
+    while i < n:
+        c = fpath[i]
+
+        if c == "{":
+            depth += 1
+            out.append(c)
+            i += 1
+        elif c == "}":
+            depth = max(0, depth - 1)
+            out.append(c)
+            i += 1
+        elif depth > 0:
+            # Inside a {name} or {name:spec} capture -- leave untouched so
+            # existing named captures and type specs (e.g. {job:d}) behave
+            # exactly as before.
+            out.append(c)
+            i += 1
+        elif c == "*":
+            # No leading/embedded '_' in the type name -- `parse` reads a
+            # leading '_' as a thousands-grouping marker (like Python's
+            # "{:_}") and mangles the rest of the spec.
+            name = f"fpathlibglobstar{counter}"
+            extra_types[name] = _glob_star
+            out.append(f"{{:{name}}}")
+            counter += 1
+            i += 1
+        elif c == "?":
+            name = f"fpathlibglobqmark{counter}"
+            extra_types[name] = _glob_qmark
+            out.append(f"{{:{name}}}")
+            counter += 1
+            i += 1
+        elif c == "[":
+            j = fpath.find("]", i + 1)
+            if j == -1:
+                # Not a valid bracket expression -- leave as a literal '['.
+                out.append(c)
+                i += 1
+            else:
+                content = fpath[i + 1 : j]
+                # glob's "[!abc]" negation is regex's "[^abc]".
+                if content.startswith("!"):
+                    content = "^" + content[1:]
+                name = f"fpathlibglobclass{counter}"
+                extra_types[name] = _glob_class_type(f"[{content}]")
+                out.append(f"{{:{name}}}")
+                counter += 1
+                i = j + 1
+        else:
+            out.append(c)
+            i += 1
+
+    return "".join(out), extra_types
+
+
 class FPath:
     """
     :obj:`FPath` is an f-string version of :obj:`Path`. This does not behave like a
@@ -56,7 +161,8 @@ class FPath:
             msg = f"invalid value for 'errors': {errors}"
             raise ValueError(msg)
 
-        parser = parse.compile(self.fpath)
+        translated_fpath, extra_types = _translate_wildcards(self.fpath)
+        parser = parse.compile(translated_fpath, extra_types=extra_types)
 
         paths = []
         for fname in glob(re.sub(r"\{.*?\}", "*", self.fpath)):
