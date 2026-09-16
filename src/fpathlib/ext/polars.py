@@ -169,6 +169,7 @@ def scan_txt(
     has_header=False,
     keep_line=False,
     usecols=None,
+    validate_schema=False,
     *args,
     **kwargs,
 ):
@@ -198,6 +199,17 @@ def scan_txt(
         Whether to keep the original line as a column in the output.
     usecols : :obj:`list`[:obj:`int`], optional
         Indexes of columns to keep in the output. If not provided, all columns are kept. Only applicable if `separator` is provided.
+    validate_schema : :obj:`bool`
+        When the field count is inferred from a single representative file
+        (the fast path for a multi-file glob/pattern), also check that no
+        *other* matched file has *more* fields than that sample. A file with
+        fewer fields than the sample already raises a clear polars error
+        (out-of-bounds list access); a file with more fields would otherwise
+        have its extra columns silently dropped instead of erroring. This
+        check reads every matched file's line count, which defeats most of
+        the point of the fast path for very large globs -- leave it off
+        (the default) unless you specifically need to catch inconsistent
+        files. (Default: False)
     *args
         Positional arguments to pass to :meth:`polars.scan_csv`.
     **kwargs
@@ -282,6 +294,26 @@ def scan_txt(
             # Initial field names, may be renamed later from header or by `new_columns`
             fields = {i: f"field_{i}" for i in range(n_fields)}
 
+            # n_fields came from a single sample file (see above), so a file
+            # with *fewer* fields than the sample will already raise a clear
+            # polars error below (list.get() on an out-of-bounds index). A
+            # file with *more* fields would not -- its extra columns would
+            # just be silently dropped -- so check for that explicitly if
+            # requested.
+            if validate_schema and sample_schema is not None:
+                max_fields = (
+                    lf.select(_polars.col("fields").list.len().max())
+                    .collect()
+                    .item()
+                )
+                if max_fields is not None and max_fields > n_fields:
+                    msg = (
+                        f"field count mismatch: schema was inferred from a "
+                        f"single sample file with {n_fields} fields, but at "
+                        f"least one matched file has {max_fields} fields"
+                    )
+                    raise ValueError(msg)
+
         # Add each field as a separate column
         for i, field in fields.items():
             lf = lf.with_columns(_polars.col("fields").list.get(i).alias(field))
@@ -323,74 +355,3 @@ def scan_txt(
             lf = lf.cast(inferred_schema)
 
     return lf
-
-
-def validate_schema(expanded_fpath, separator, has_header=False, **kwargs):
-    """
-    Check that every file in `expanded_fpath` has no more fields (once
-    split by `separator`) than a single representative sample file.
-
-    scan_txt's schema-inference fast path derives the field count from
-    just one representative file (`expanded_fpath[0]`) instead of scanning
-    every match, for speed. A file with *fewer* fields than that sample
-    already fails loudly on its own when scan_txt is collected (polars
-    raises on the resulting out-of-bounds list access). A file with *more*
-    fields would not -- its extra columns are silently dropped instead of
-    erroring. This function catches that case explicitly.
-
-    It is not run as part of scan_txt, because it requires reading every
-    matched file's lines -- exactly the cost scan_txt's sample-based fast
-    path exists to avoid. Call it yourself when you want that safety net,
-    e.g. before collecting a scan_txt LazyFrame built from the same
-    `expanded_fpath` and `separator`.
-
-    Parameters
-    ----------
-    expanded_fpath : :obj:`fpathlib.ExpandedFPath`
-        An expanded f-string path with more than one match. Patterns with
-        no {} captures (plain literal paths or shell globs) aren't checked,
-        since scan_txt's fast path doesn't apply to them either.
-    separator : :obj:`str`
-        Same separator that would be passed to :func:`scan_txt`.
-    has_header : :obj:`bool`
-        Same as :func:`scan_txt`'s `has_header`.
-    **kwargs
-        Passed through to the sample-file :func:`scan_txt` call used to
-        determine the expected field count.
-
-    Raises
-    ------
-    ValueError
-        If a matched file has more fields than the sample file.
-    """
-
-    if not isinstance(expanded_fpath, ExpandedFPath) or len(expanded_fpath) < 2:
-        return
-
-    sample_schema = scan_txt(
-        expanded_fpath[0],
-        separator=separator,
-        has_header=has_header,
-        **kwargs,
-    ).collect_schema()
-    n_fields = len(sample_schema) - 1  # minus 'fname'
-
-    lf = _polars.scan_csv(
-        expanded_fpath,
-        include_file_paths="fname",
-        separator="\n",
-        new_columns=["line"],
-        has_header=False,
-    )
-    lf = lf.with_columns(
-        _polars.col("line").str.split(separator, literal=False).alias("fields")
-    )
-
-    max_fields = lf.select(_polars.col("fields").list.len().max()).collect().item()
-    if max_fields is not None and max_fields > n_fields:
-        msg = (
-            f"field count mismatch: schema was inferred from a single "
-            f"sample file with {n_fields} fields, but at least one matched "
-            f"file has {max_fields} fields"
-        )
-        raise ValueError(msg)
