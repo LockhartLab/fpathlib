@@ -153,7 +153,13 @@ class ExpandedFPath(Sequence):
 
         pl = import_optional_dependency("polars")
 
-        data = [{"fname": str(key), **value} for key, value in self.metadata.items()]
+        # `value` is None whenever this ExpandedFPath was built with
+        # require_metadata=False and a path's metadata simply wasn't found
+        # (e.g. a plain glob with no named captures at all) -- treat that as
+        # "no metadata columns" rather than crashing on `**None`.
+        data = [
+            {"fname": str(key), **(value or {})} for key, value in self.metadata.items()
+        ]
         df = pl.DataFrame(data)
         if lazy:
             df = df.lazy()

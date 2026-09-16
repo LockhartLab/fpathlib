@@ -1,4 +1,5 @@
 from functools import wraps
+import glob as _glob
 import polars as _polars
 from fpathlib import expand_fpath_decorator, ExpandedFPath
 
@@ -11,6 +12,27 @@ def __getattr__(name):
     # already find defined here, so it can't silently shadow builtins like
     # `list` or `len` for this module's own implementation code.
     return getattr(_polars, name)
+
+
+def _first_match(pattern):
+    """
+    Return the first path matching `pattern` (a shell glob) without walking
+    the rest of the matches, for grabbing a single representative file
+    cheaply -- used by scan_txt's schema-inference fast path when there's no
+    fpathlib ExpandedFPath to index into (plain globs have no named
+    captures, so is_expandable() is False and they never get expanded by
+    fpathlib). Returns None for a pattern with no glob metacharacters (a
+    literal path) -- it's already a single file, so there's nothing to
+    resolve, and treating it as a pattern here would make scan_txt's
+    recursive single-file schema lookup call itself forever.
+    """
+
+    if not _glob.has_magic(str(pattern)):
+        return None
+    try:
+        return next(iter(_glob.iglob(str(pattern), recursive=True)), None)
+    except OSError:
+        return None
 
 
 def join_metadata(df, expanded_fpath):
@@ -169,6 +191,7 @@ def scan_txt(
     has_header=False,
     keep_line=False,
     usecols=None,
+    validate_schema=False,
     *args,
     **kwargs,
 ):
@@ -198,6 +221,17 @@ def scan_txt(
         Whether to keep the original line as a column in the output.
     usecols : :obj:`list`[:obj:`int`], optional
         Indexes of columns to keep in the output. If not provided, all columns are kept. Only applicable if `separator` is provided.
+    validate_schema : :obj:`bool`
+        When the field count is inferred from a single representative file
+        (the fast path for a multi-file glob/pattern), also check that no
+        *other* matched file has *more* fields than that sample. A file with
+        fewer fields than the sample already raises a clear polars error
+        (out-of-bounds list access); a file with more fields would otherwise
+        have its extra columns silently dropped instead of erroring. This
+        check reads every matched file's line count, which defeats most of
+        the point of the fast path for very large globs -- leave it off
+        (the default) unless you specifically need to catch inconsistent
+        files. (Default: False)
     *args
         Positional arguments to pass to :meth:`polars.scan_csv`.
     **kwargs
@@ -239,27 +273,39 @@ def scan_txt(
 
         # With many matched files, inferring the field count/dtypes directly
         # against the full glob is extremely slow (every file has to be opened
-        # before a `.head()` takes effect). Instead, recurse on a single
-        # representative file -- expanded_fpath[0] -- and reuse its already-cheap
-        # (single-file) inference below instead of duplicating it here. Computed
-        # once here since it's needed by both the field-count branch below and
-        # the dtype-inference branch further down.
+        # before a `.head()` takes effect). Instead, grab a single
+        # representative file and reuse its already-cheap (single-file)
+        # inference below instead of duplicating it here. Computed once here
+        # since it's needed by both the field-count branch below and the
+        # dtype-inference branch further down.
+        #
+        # This applies to fpathlib's own named-capture patterns (already
+        # expanded into `expanded_fpath`, so `expanded_fpath[0]` is free) AND
+        # to plain literal paths / shell globs, which is_expandable() always
+        # reports False for (it only means "has {name} captures", not "is a
+        # multi-file pattern") -- those never get expanded by fpathlib at
+        # all, so a single match is grabbed directly off the filesystem
+        # instead.
         infer_schema = kwargs.get("infer_schema", True)
         sample_schema = None
-        if (
-            isinstance(expanded_fpath, ExpandedFPath)
-            and len(expanded_fpath) > 1
-            and (usecols is None or infer_schema)
-        ):
-            sample_schema = scan_txt(
-                expanded_fpath[0],
-                filter_expr=filter_expr,
-                separator=separator,
-                new_columns=new_columns,
-                has_header=has_header,
-                usecols=usecols,
-                **kwargs,
-            ).collect_schema()
+        if usecols is None or infer_schema:
+            sample_source = None
+            if isinstance(expanded_fpath, ExpandedFPath):
+                if len(expanded_fpath) > 1:
+                    sample_source = expanded_fpath[0]
+            else:
+                sample_source = _first_match(expanded_fpath)
+
+            if sample_source is not None:
+                sample_schema = scan_txt(
+                    sample_source,
+                    filter_expr=filter_expr,
+                    separator=separator,
+                    new_columns=new_columns,
+                    has_header=has_header,
+                    usecols=usecols,
+                    **kwargs,
+                ).collect_schema()
 
         # Set the columns to use for the fields.
         # Either specify a subset of columns to use, or use all columns
@@ -281,6 +327,26 @@ def scan_txt(
 
             # Initial field names, may be renamed later from header or by `new_columns`
             fields = {i: f"field_{i}" for i in range(n_fields)}
+
+            # n_fields came from a single sample file (see above), so a file
+            # with *fewer* fields than the sample will already raise a clear
+            # polars error below (list.get() on an out-of-bounds index). A
+            # file with *more* fields would not -- its extra columns would
+            # just be silently dropped -- so check for that explicitly if
+            # requested.
+            if validate_schema and sample_schema is not None:
+                max_fields = (
+                    lf.select(_polars.col("fields").list.len().max())
+                    .collect()
+                    .item()
+                )
+                if max_fields is not None and max_fields > n_fields:
+                    msg = (
+                        f"field count mismatch: schema was inferred from a "
+                        f"single sample file with {n_fields} fields, but at "
+                        f"least one matched file has {max_fields} fields"
+                    )
+                    raise ValueError(msg)
 
         # Add each field as a separate column
         for i, field in fields.items():
