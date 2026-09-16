@@ -2,11 +2,14 @@ import pathlib
 
 import pytest
 
+import inspect
+
 from fpathlib import (
     Path,
     FPath,
     ExpandedFPath,
     expand_fpath,
+    iexpand_fpath,
     expand_fpath_decorator,
     is_expandable,
 )
@@ -154,6 +157,107 @@ class TestFPath:
         expanded = fpath.expand(require_metadata=False)
         assert len(expanded) == 2
         assert all(p.metadata is None for p in expanded)
+
+
+class TestFPathIexpand:
+    def test_returns_a_generator(self, tree):
+        fpath = FPath(str(tree / "tr{trajectory:d}/job{job:d}.log"))
+        result = fpath.iexpand()
+        assert inspect.isgenerator(result)
+
+    def test_yields_same_paths_and_metadata_as_expand(self, tree):
+        fpath = FPath(str(tree / "tr{trajectory:d}/job{job:d}.log"))
+
+        expanded = fpath.expand()
+        iexpanded = list(fpath.iexpand())
+
+        assert len(iexpanded) == len(expanded)
+        assert {str(p) for p in iexpanded} == {str(p) for p in expanded}
+        assert {str(k): v for k, v in expanded.metadata.items()} == {
+            str(p): p.metadata for p in iexpanded
+        }
+
+    def test_expand_is_built_on_iexpand(self, tree):
+        # expand() should just be list(iexpand()) wrapped in ExpandedFPath --
+        # confirm it actually delegates rather than duplicating the walk.
+        fpath = FPath(str(tree / "tr{trajectory:d}/job{job:d}.log"))
+        calls = []
+        real_iexpand = FPath.iexpand
+
+        def spy(self, *args, **kwargs):
+            calls.append((args, kwargs))
+            return real_iexpand(self, *args, **kwargs)
+
+        FPath.iexpand = spy
+        try:
+            fpath.expand()
+        finally:
+            FPath.iexpand = real_iexpand
+
+        assert len(calls) == 1
+
+    def test_exclude_path_patterns(self, tree):
+        fpath = FPath(str(tree / "tr{trajectory:d}/job{job:d}.log"))
+        result = list(fpath.iexpand(exclude_path_patterns="*job2.log"))
+        assert len(result) == 2
+        assert all(p.metadata["job"] == 1 for p in result)
+
+    def test_require_metadata_raises_mid_iteration(self, tree):
+        (tree / "trX").mkdir()
+        (tree / "trX" / "jobY.log").write_text("bad\n")
+
+        fpath = FPath(str(tree / "tr{trajectory:d}/job{job:d}.log"))
+        with pytest.raises(AttributeError):
+            list(fpath.iexpand())
+
+    def test_require_metadata_false_keeps_unmatched(self, tree):
+        (tree / "trX").mkdir()
+        (tree / "trX" / "jobY.log").write_text("bad\n")
+
+        fpath = FPath(str(tree / "tr{trajectory:d}/job{job:d}.log"))
+        result = list(fpath.iexpand(require_metadata=False))
+        assert len(result) == 5
+        assert sum(p.metadata is None for p in result) == 1
+
+    def test_no_matches_raises_by_default(self, tmp_path):
+        fpath = FPath(str(tmp_path / "nope{x:d}.log"))
+        with pytest.raises(IOError):
+            list(fpath.iexpand())
+
+    def test_no_matches_warns(self, tmp_path):
+        fpath = FPath(str(tmp_path / "nope{x:d}.log"))
+        with pytest.warns(UserWarning):
+            result = list(fpath.iexpand(errors="warn"))
+        assert result == []
+
+    def test_no_matches_ignore(self, tmp_path):
+        fpath = FPath(str(tmp_path / "nope{x:d}.log"))
+        result = list(fpath.iexpand(errors="ignore"))
+        assert result == []
+
+    def test_invalid_errors_value_raises_immediately(self, tmp_path):
+        # Validation happens eagerly when iexpand() is called, not lazily
+        # on first iteration -- calling it alone (no list()/for) is enough
+        # to raise.
+        fpath = FPath(str(tmp_path / "nope{x:d}.log"))
+        with pytest.raises(ValueError):
+            fpath.iexpand(errors="bogus")
+
+    def test_wildcard_mixed_with_capture_raises_immediately(self, tree):
+        fpath = FPath(str(tree / "tr{trajectory:d}/*"))
+        with pytest.raises(ValueError, match=r"\*"):
+            fpath.iexpand()
+
+
+class TestIexpandFpath:
+    def test_returns_a_generator(self, tree):
+        result = iexpand_fpath(str(tree / "tr{trajectory:d}/job{job:d}.log"))
+        assert inspect.isgenerator(result)
+
+    def test_yields_expected_paths(self, tree):
+        result = list(iexpand_fpath(str(tree / "tr{trajectory:d}/job{job:d}.log")))
+        assert len(result) == 4
+        assert all(isinstance(p.metadata, dict) for p in result)
 
 
 class TestExpandedFPath:

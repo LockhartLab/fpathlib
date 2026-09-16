@@ -31,6 +31,38 @@ def expand_fpath(fpath, *, exclude_path_patterns=None, require_metadata=True):
     )
 
 
+def iexpand_fpath(fpath, *, exclude_path_patterns=None, require_metadata=True, errors="raise"):
+    """
+    Generator equivalent of :func:`.expand_fpath` -- lazily yields each
+    matching :obj:`.Path` instead of building the whole
+    :obj:`.ExpandedFPath` up front. This is a convenience function that
+    simply creates an :obj:`FPath` and calls its :meth:`.FPath.iexpand`
+    method.
+
+    Parameters
+    ----------
+    fpath : :obj:`str`
+        An f-string path, where the variables are captured and stored along the path
+        name.
+    exclude_path_patterns : :obj:`str` or :obj:`Iterable`[:obj:`str`]
+        Exclude paths that match the supplied pattern. (Default: None).
+    require_metadata : :obj:`bool`
+        Require that all paths identified must have found metadata. (Default: True).
+    errors : :obj:`str`
+        How to handle the "no matches" case. See :meth:`.FPath.iexpand`. (Default: "raise").
+
+    Yields
+    ------
+    :obj:`.Path`
+    """
+
+    return FPath(fpath).iexpand(
+        exclude_path_patterns=exclude_path_patterns,
+        require_metadata=require_metadata,
+        errors=errors,
+    )
+
+
 def expand_fpath_decorator(f=None, require_expandable=True, post_process=None):
     """
     Decorator for :func:`.expand_fpath`.

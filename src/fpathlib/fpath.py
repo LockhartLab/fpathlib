@@ -1,5 +1,5 @@
 from collections.abc import Sequence
-from glob import glob
+from glob import glob, iglob
 import parse
 import re
 
@@ -31,37 +31,19 @@ class FPath:
     def __repr__(self):
         return "FPath({!r})".format(self.fpath)
 
-    def expand(self, exclude_path_patterns=None, require_metadata=True, errors="raise"):
+    def _compile_parser(self):
         """
-        Use an f-string to extract out a collection of paths, where the f-string
-        variables are captured and stored along the path name.
-
-        Parameters
-        ----------
-        exclude_path_patterns : :obj:`str` or :obj:`Iterable`[:obj:`str`]
-            Exclude paths that match the supplied pattern. (Default: None).
-        require_metadata : :obj:`bool`
-            Require that all paths identified must have found metadata. (Default: True).
-        errors : :obj:`str`
-            How to handle errors. If "raise", then raise an error. If "warn", then warn
-            and return an empty collection. If "ignore", then ignore the error and
-            return an empty collection. (Default: "raise").
-
-        Returns
-        -------
-        :obj:`.ExpandedFPath`
+        Compile `self.fpath` for metadata extraction, after checking it
+        doesn't mix a {} named capture with a bare glob wildcard outside of
+        one -- shared by :meth:`.expand` and :meth:`.iexpand`.
         """
-
-        if errors not in {"raise", "warn", "ignore"}:
-            msg = f"invalid value for 'errors': {errors}"
-            raise ValueError(msg)
 
         parser = parse.compile(self.fpath)
 
-        # glob() (used below to find files) and `parse` (used above to
-        # extract {name} values) disagree about what a bare '*', '?', or
-        # '[...]' means outside a {} capture: glob treats it as a wildcard,
-        # but parse's format-string language only special-cases {...} and
+        # glob() (used to find files) and `parse` (used above to extract
+        # {name} values) disagree about what a bare '*', '?', or '[...]'
+        # means outside a {} capture: glob treats it as a wildcard, but
+        # parse's format-string language only special-cases {...} and
         # reads everything else -- including '*' -- as literal text to
         # match. A pattern like "{a}/*" would find files fine via glob()
         # but then fail to parse against that same string, since real
@@ -84,8 +66,50 @@ class FPath:
                     )
                     raise ValueError(msg)
 
-        paths = []
-        for fname in glob(re.sub(r"\{.*?\}", "*", self.fpath)):
+        return parser
+
+    def iexpand(self, exclude_path_patterns=None, require_metadata=True, errors="raise"):
+        """
+        Lazily yield each :obj:`.Path` matching the f-string pattern, one at
+        a time, instead of building the whole :obj:`.ExpandedFPath` up
+        front. Useful when a pattern could match a very large number of
+        files and you don't want them all held in memory at once, or want
+        to start processing before the full glob finishes walking the
+        filesystem. :meth:`.expand` is built on top of this generator.
+
+        Parameters
+        ----------
+        exclude_path_patterns : :obj:`str` or :obj:`Iterable`[:obj:`str`]
+            Exclude paths that match the supplied pattern. (Default: None).
+        require_metadata : :obj:`bool`
+            Require that all paths identified must have found metadata. (Default: True).
+        errors : :obj:`str`
+            How to handle the "no matches" case, checked once the pattern is
+            fully exhausted. If "raise", then raise an error. If "warn",
+            then warn. If "ignore", then do nothing. (Default: "raise").
+
+        Yields
+        ------
+        :obj:`.Path`
+        """
+
+        # Validate and compile eagerly, here in a plain (non-generator)
+        # method, so a bad `errors` value or an unsupported wildcard/{}
+        # mix raises as soon as iexpand() is called -- not deferred until
+        # whatever code actually starts iterating the result, which is the
+        # usual surprise with putting validation inside a generator
+        # function's body.
+        if errors not in {"raise", "warn", "ignore"}:
+            msg = f"invalid value for 'errors': {errors}"
+            raise ValueError(msg)
+
+        parser = self._compile_parser()
+
+        return self._iexpand(parser, exclude_path_patterns, require_metadata, errors)
+
+    def _iexpand(self, parser, exclude_path_patterns, require_metadata, errors):
+        n = 0
+        for fname in iglob(re.sub(r"\{.*?\}", "*", self.fpath)):
             path = Path(fname)
             if exclude_path_patterns and path.match_any(exclude_path_patterns):
                 continue
@@ -93,9 +117,10 @@ class FPath:
             if require_metadata and path.metadata is None:
                 msg = f"metadata not found for '{fname}' with '{self.fpath}'"
                 raise AttributeError(msg)
-            paths.append(path)
+            n += 1
+            yield path
 
-        if len(paths) == 0 and errors != "ignore":
+        if n == 0 and errors != "ignore":
             msg = f"no paths found for {self.fpath.__repr__()}"
             if errors == "raise":
                 raise IOError(msg)
@@ -103,6 +128,35 @@ class FPath:
                 import warnings
 
                 warnings.warn(msg)
+
+    def expand(self, exclude_path_patterns=None, require_metadata=True, errors="raise"):
+        """
+        Use an f-string to extract out a collection of paths, where the f-string
+        variables are captured and stored along the path name.
+
+        Parameters
+        ----------
+        exclude_path_patterns : :obj:`str` or :obj:`Iterable`[:obj:`str`]
+            Exclude paths that match the supplied pattern. (Default: None).
+        require_metadata : :obj:`bool`
+            Require that all paths identified must have found metadata. (Default: True).
+        errors : :obj:`str`
+            How to handle errors. If "raise", then raise an error. If "warn", then warn
+            and return an empty collection. If "ignore", then ignore the error and
+            return an empty collection. (Default: "raise").
+
+        Returns
+        -------
+        :obj:`.ExpandedFPath`
+        """
+
+        paths = list(
+            self.iexpand(
+                exclude_path_patterns=exclude_path_patterns,
+                require_metadata=require_metadata,
+                errors=errors,
+            )
+        )
 
         return ExpandedFPath(paths=paths, fpath=self)
 
