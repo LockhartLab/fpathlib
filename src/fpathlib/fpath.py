@@ -58,6 +58,32 @@ class FPath:
 
         parser = parse.compile(self.fpath)
 
+        # glob() (used below to find files) and `parse` (used above to
+        # extract {name} values) disagree about what a bare '*', '?', or
+        # '[...]' means outside a {} capture: glob treats it as a wildcard,
+        # but parse's format-string language only special-cases {...} and
+        # reads everything else -- including '*' -- as literal text to
+        # match. A pattern like "{a}/*" would find files fine via glob()
+        # but then fail to parse against that same string, since real
+        # filenames don't literally contain "/*" -- silently producing
+        # metadata=None for every match, or raising a confusing "metadata
+        # not found" error, with no indication that '*' was the actual
+        # problem. Fail fast and explain it instead. Only applies when
+        # there's a {} capture to begin with -- a plain glob with none is a
+        # separate, unaffected case (no metadata is expected from it).
+        if parser.named_fields:
+            literal_fpath = re.sub(r"\{.*?\}", "", self.fpath)
+            for c in "*?[":
+                if c in literal_fpath:
+                    msg = (
+                        f"glob wildcard {c!r} outside a {{}} capture is not "
+                        f"supported in {self.fpath!r} -- 'parse' treats it "
+                        "as a literal character, not a wildcard. Use a "
+                        "named capture (e.g. '{a}/{b}') if you want that "
+                        "segment captured too."
+                    )
+                    raise ValueError(msg)
+
         paths = []
         for fname in glob(re.sub(r"\{.*?\}", "*", self.fpath)):
             path = Path(fname)

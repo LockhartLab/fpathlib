@@ -89,11 +89,7 @@ def expand_fpath_decorator(f=None, require_expandable=True, post_process=None):
 def is_expandable(fpath):
     """
     Check whether `fpath` has fpathlib's own named f-string captures (e.g.
-    `{name}`), NOT whether it's resolvable via a filesystem glob. A plain
-    literal path and a plain shell glob (`*.log`) both return False here,
-    even though only the glob actually matches multiple files -- callers
-    that care about "does this look like a multi-file pattern" should not
-    rely on this function alone.
+    `{name}`).
 
     Parameters
     ----------
