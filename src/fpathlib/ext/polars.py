@@ -169,7 +169,6 @@ def scan_txt(
     has_header=False,
     keep_line=False,
     usecols=None,
-    validate_schema=False,
     *args,
     **kwargs,
 ):
@@ -199,17 +198,6 @@ def scan_txt(
         Whether to keep the original line as a column in the output.
     usecols : :obj:`list`[:obj:`int`], optional
         Indexes of columns to keep in the output. If not provided, all columns are kept. Only applicable if `separator` is provided.
-    validate_schema : :obj:`bool`
-        When the field count is inferred from a single representative file
-        (the fast path for a multi-file glob/pattern), also check that no
-        *other* matched file has *more* fields than that sample. A file with
-        fewer fields than the sample already raises a clear polars error
-        (out-of-bounds list access); a file with more fields would otherwise
-        have its extra columns silently dropped instead of erroring. This
-        check reads every matched file's line count, which defeats most of
-        the point of the fast path for very large globs -- leave it off
-        (the default) unless you specifically need to catch inconsistent
-        files. (Default: False)
     *args
         Positional arguments to pass to :meth:`polars.scan_csv`.
     **kwargs
@@ -293,26 +281,6 @@ def scan_txt(
 
             # Initial field names, may be renamed later from header or by `new_columns`
             fields = {i: f"field_{i}" for i in range(n_fields)}
-
-            # n_fields came from a single sample file (see above), so a file
-            # with *fewer* fields than the sample will already raise a clear
-            # polars error below (list.get() on an out-of-bounds index). A
-            # file with *more* fields would not -- its extra columns would
-            # just be silently dropped -- so check for that explicitly if
-            # requested.
-            if validate_schema and sample_schema is not None:
-                max_fields = (
-                    lf.select(_polars.col("fields").list.len().max())
-                    .collect()
-                    .item()
-                )
-                if max_fields is not None and max_fields > n_fields:
-                    msg = (
-                        f"field count mismatch: schema was inferred from a "
-                        f"single sample file with {n_fields} fields, but at "
-                        f"least one matched file has {max_fields} fields"
-                    )
-                    raise ValueError(msg)
 
         # Add each field as a separate column
         for i, field in fields.items():
