@@ -336,8 +336,8 @@ class TestExpandFpathDecorator:
         with pytest.raises(ValueError):
             f("plain/no/fields.log")
 
-    def test_post_process_skipped_for_non_expandable_path(self):
-        # There's no ExpandedFPath to hand post_process when fpath was
+    def test_postprocess_skipped_for_non_expandable_path(self):
+        # There's no ExpandedFPath to hand postprocess when fpath was
         # never expanded -- confirm it's skipped entirely rather than
         # crashing on a missing expanded_fpath.
         calls = []
@@ -346,7 +346,7 @@ class TestExpandFpathDecorator:
             calls.append((result, expanded_fpath))
             return result
 
-        @expand_fpath_decorator(post_process=post)
+        @expand_fpath_decorator(postprocess=post)
         def f(fpath):
             return fpath
 
@@ -354,14 +354,14 @@ class TestExpandFpathDecorator:
         assert result == "plain/no/fields.log"
         assert calls == []
 
-    def test_post_process_is_called_with_result_and_expanded_fpath(self, tree):
+    def test_postprocess_is_called_with_result_and_expanded_fpath(self, tree):
         calls = []
 
         def post(result, expanded_fpath):
             calls.append((result, expanded_fpath))
             return result * 2
 
-        @expand_fpath_decorator(post_process=post)
+        @expand_fpath_decorator(postprocess=post)
         def f(expanded_fpath):
             return len(expanded_fpath)
 

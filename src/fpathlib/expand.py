@@ -63,7 +63,7 @@ def iexpand_fpath(fpath, *, exclude_path_patterns=None, require_metadata=True, e
     )
 
 
-def expand_fpath_decorator(f=None, require_expandable=False, post_process=None):
+def expand_fpath_decorator(f=None, require_expandable=False, postprocess=None):
     """
     Decorator for :func:`.expand_fpath`.
 
@@ -74,9 +74,9 @@ def expand_fpath_decorator(f=None, require_expandable=False, post_process=None):
     require_expandable : :obj:`bool`
         Whether to require `fpath` to have {} named captures. If False
         (the default), a plain literal path or glob is passed straight
-        through to `f` unexpanded, with `post_process` skipped -- there's
+        through to `f` unexpanded, with `postprocess` skipped -- there's
         no ExpandedFPath to hand it in that case. (Default: False)
-    post_process : :obj:`callable`
+    postprocess : :obj:`callable`
         A function that takes the output of `f` and the :obj:`.ExpandedFPath`.
         (Default: None).
     """
@@ -101,9 +101,9 @@ def expand_fpath_decorator(f=None, require_expandable=False, post_process=None):
                 result = f(expanded_fpath, *args, **kwargs)
 
             # fpath has no {} captures, so there's no ExpandedFPath to
-            # build -- nothing for post_process (e.g. join_metadata) to
+            # build -- nothing for postprocess (e.g. join_metadata) to
             # join metadata from. Call f directly and return immediately,
-            # skipping post_process entirely, rather than falling through
+            # skipping postprocess entirely, rather than falling through
             # to it with no expanded_fpath to give it.
             else:
                 if require_expandable:
@@ -111,8 +111,8 @@ def expand_fpath_decorator(f=None, require_expandable=False, post_process=None):
                     raise ValueError(msg)
                 return f(fpath, *args, **kwargs)
 
-            if post_process is not None:
-                result = post_process(result, expanded_fpath)
+            if postprocess is not None:
+                result = postprocess(result, expanded_fpath)
 
             return result
 

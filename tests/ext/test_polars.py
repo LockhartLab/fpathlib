@@ -189,6 +189,70 @@ def test_scan_txt(testcase):
     )
 
 
+class TestIncludeFilePaths:
+    def test_scan_csv_omits_fname_by_default(self, tmp_path):
+        (tmp_path / "tr1").mkdir()
+        (tmp_path / "tr1" / "x.csv").write_text("a,b,c\n")
+        (tmp_path / "tr2").mkdir()
+        (tmp_path / "tr2" / "x.csv").write_text("d,e,f\n")
+
+        df = pl.scan_csv(
+            str(tmp_path / "tr{n:d}/x.csv"), has_header=False
+        ).collect()
+        assert "fname" not in df.columns
+
+    def test_scan_csv_include_file_paths(self, tmp_path):
+        (tmp_path / "tr1").mkdir()
+        (tmp_path / "tr1" / "x.csv").write_text("a,b,c\n")
+        (tmp_path / "tr2").mkdir()
+        (tmp_path / "tr2" / "x.csv").write_text("d,e,f\n")
+
+        df = pl.scan_csv(
+            str(tmp_path / "tr{n:d}/x.csv"),
+            has_header=False,
+            include_file_paths="source_file",
+        ).collect()
+        assert "source_file" in df.columns
+        assert "fname" not in df.columns
+        assert set(df["source_file"]) == {
+            str(tmp_path / "tr1" / "x.csv"),
+            str(tmp_path / "tr2" / "x.csv"),
+        }
+
+    def test_scan_parquet_include_file_paths(self, tmp_path):
+        (tmp_path / "tr1").mkdir()
+        pl.DataFrame({"x": [1]}).write_parquet(tmp_path / "tr1" / "x.parquet")
+        (tmp_path / "tr2").mkdir()
+        pl.DataFrame({"x": [2]}).write_parquet(tmp_path / "tr2" / "x.parquet")
+
+        df = pl.scan_parquet(str(tmp_path / "tr{n:d}/x.parquet")).collect()
+        assert "fname" not in df.columns
+
+        df2 = pl.scan_parquet(
+            str(tmp_path / "tr{n:d}/x.parquet"), include_file_paths="source_file"
+        ).collect()
+        assert "source_file" in df2.columns
+
+    def test_scan_txt_include_file_paths(self, tmp_path):
+        (tmp_path / "tr1").mkdir()
+        (tmp_path / "tr1" / "x.log").write_text("a b c\n")
+        (tmp_path / "tr2").mkdir()
+        (tmp_path / "tr2" / "x.log").write_text("d e f\n")
+
+        df = pl.scan_txt(
+            str(tmp_path / "tr{n:d}/x.log"), separator=" ", has_header=False
+        ).collect()
+        assert "fname" not in df.columns
+
+        df2 = pl.scan_txt(
+            str(tmp_path / "tr{n:d}/x.log"),
+            separator=" ",
+            has_header=False,
+            include_file_paths="source_file",
+        ).collect()
+        assert "source_file" in df2.columns
+
+
 class TestExpandedFPathToPolars:
     def test_none_metadata_becomes_empty_columns(self, tmp_path):
         # expand_fpath(..., require_metadata=False) on a pattern with no
@@ -250,7 +314,7 @@ class TestScanTxtValidateSchema:
             validate_schema=False,
         ).collect()
 
-        assert set(df.columns) == {"fname", "field_0", "field_1", "field_2", "n"}
+        assert set(df.columns) == {"field_0", "field_1", "field_2", "n"}
         row = df.filter(pl.col("n") == 3)
         assert row["field_2"].item() == "r"  # "s" silently dropped
 
@@ -299,5 +363,5 @@ class TestScanTxtValidateSchema:
             validate_schema=True,
         ).collect()
 
-        assert set(df.columns) == {"fname", "field_0", "field_1", "n"}
+        assert set(df.columns) == {"field_0", "field_1", "n"}
         assert df.height == 3

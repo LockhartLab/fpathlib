@@ -17,10 +17,20 @@ def join_metadata(df, expanded_fpath):
     return df.join(
         expanded_fpath.to_polars(lazy=isinstance(df, _polars.LazyFrame)),
         on="fname",
-    )
+    ).drop("fname")
 
 
-@expand_fpath_decorator(post_process=join_metadata)
+def _keep_fname(lf, include_file_paths):
+    # "fname" is always created internally to join captured metadata
+    # (see join_metadata, which drops it once the join is done); alias it
+    # to a caller-chosen name here, before that drop, if they want to keep
+    # a file-path column in the output.
+    if include_file_paths is not None:
+        lf = lf.with_columns(_polars.col("fname").alias(include_file_paths))
+    return lf
+
+
+@expand_fpath_decorator(postprocess=join_metadata)
 def read_csv(expanded_fpath, *args, **kwargs):
     """
     Read the paths in the collection as CSV files, and return a
@@ -44,7 +54,7 @@ def read_csv(expanded_fpath, *args, **kwargs):
     return scan_csv.__wrapped__(expanded_fpath, *args, **kwargs).collect()
 
 
-@expand_fpath_decorator(post_process=join_metadata)
+@expand_fpath_decorator(postprocess=join_metadata)
 def read_txt(
     expanded_fpath,
     filter_expr=None,
@@ -97,8 +107,8 @@ def read_txt(
     ).collect()
 
 
-@expand_fpath_decorator(post_process=join_metadata)
-def scan_csv(expanded_fpath, *args, **kwargs):
+@expand_fpath_decorator(postprocess=join_metadata)
+def scan_csv(expanded_fpath, include_file_paths=None, *args, **kwargs):
     """
     Scan the paths in the collection as CSV files, and return a
     :obj:`polars.LazyFrame` along with the metadata captured from the path
@@ -108,6 +118,10 @@ def scan_csv(expanded_fpath, *args, **kwargs):
     ----------
     expanded_fpath : :obj:`fpathlib.ExpandedFPath`
         An expanded f-string path.
+    include_file_paths : :obj:`str`, optional
+        Name to give a column of each row's source file path in the
+        output. The file path is always used internally to join captured
+        metadata; without this, it isn't kept in the result. (Default: None)
     *args
         Positional arguments to pass to :meth:`polars.scan_csv`.
     **kwargs
@@ -125,11 +139,11 @@ def scan_csv(expanded_fpath, *args, **kwargs):
         **kwargs,
     )
 
-    return lf
+    return _keep_fname(lf, include_file_paths)
 
 
-@expand_fpath_decorator(post_process=join_metadata)
-def scan_parquet(expanded_fpath, *args, **kwargs):
+@expand_fpath_decorator(postprocess=join_metadata)
+def scan_parquet(expanded_fpath, include_file_paths=None, *args, **kwargs):
     """
     Scan the paths in the collection as a parquet file, and return a
     :obj:`polars.LazyFrame` along with the metadata captured from the path
@@ -139,6 +153,10 @@ def scan_parquet(expanded_fpath, *args, **kwargs):
     ----------
     expanded_fpath : :obj:`fpathlib.ExpandedFPath`
         An expanded f-string path.
+    include_file_paths : :obj:`str`, optional
+        Name to give a column of each row's source file path in the
+        output. The file path is always used internally to join captured
+        metadata; without this, it isn't kept in the result. (Default: None)
     *args
         Positional arguments to pass to :meth:`polars.scan_parquet`.
     **kwargs
@@ -156,11 +174,11 @@ def scan_parquet(expanded_fpath, *args, **kwargs):
         **kwargs,
     )
 
-    return lf
+    return _keep_fname(lf, include_file_paths)
 
 
 # TODO rename expanded_fpath as source
-@expand_fpath_decorator(post_process=join_metadata)
+@expand_fpath_decorator(postprocess=join_metadata)
 def scan_txt(
     expanded_fpath,
     filter_expr=None,
@@ -168,6 +186,7 @@ def scan_txt(
     new_columns=None,
     has_header=False,
     keep_line=False,
+    include_file_paths=None,
     usecols=None,
     validate_schema=True,
     *args,
@@ -197,6 +216,10 @@ def scan_txt(
         (Default: False)
     keep_line : :obj:`bool`
         Whether to keep the original line as a column in the output.
+    include_file_paths : :obj:`str`, optional
+        Name to give a column of each row's source file path in the
+        output. The file path is always used internally to join captured
+        metadata; without this, it isn't kept in the result. (Default: None)
     usecols : :obj:`list`[:obj:`int`], optional
         Indexes of columns to keep in the output. If not provided, all columns are kept. Only applicable if `separator` is provided.
     validate_schema : :obj:`bool`
@@ -238,6 +261,8 @@ def scan_txt(
     # This could be to remove lines with comments, etc.
     if filter_expr is not None:
         lf = lf.filter(filter_expr)
+
+    lf = _keep_fname(lf, include_file_paths)
 
     # Separate lines into fields using `separator`
     if separator is not None:
