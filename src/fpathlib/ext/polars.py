@@ -20,16 +20,6 @@ def join_metadata(df, expanded_fpath):
     ).drop("fname")
 
 
-def _keep_fname(lf, include_file_paths):
-    # "fname" is always created internally to join captured metadata
-    # (see join_metadata, which drops it once the join is done); alias it
-    # to a caller-chosen name here, before that drop, if they want to keep
-    # a file-path column in the output.
-    if include_file_paths is not None:
-        lf = lf.with_columns(_polars.col("fname").alias(include_file_paths))
-    return lf
-
-
 @expand_fpath_decorator(postprocess=join_metadata)
 def read_csv(expanded_fpath, *args, **kwargs):
     """
@@ -139,7 +129,10 @@ def scan_csv(expanded_fpath, include_file_paths=None, *args, **kwargs):
         **kwargs,
     )
 
-    return _keep_fname(lf, include_file_paths)
+    if include_file_paths is not None:
+        lf = lf.with_columns(_polars.col("fname").alias(include_file_paths))
+
+    return lf
 
 
 @expand_fpath_decorator(postprocess=join_metadata)
@@ -174,7 +167,10 @@ def scan_parquet(expanded_fpath, include_file_paths=None, *args, **kwargs):
         **kwargs,
     )
 
-    return _keep_fname(lf, include_file_paths)
+    if include_file_paths is not None:
+        lf = lf.with_columns(_polars.col("fname").alias(include_file_paths))
+
+    return lf
 
 
 # TODO rename expanded_fpath as source
@@ -262,7 +258,8 @@ def scan_txt(
     if filter_expr is not None:
         lf = lf.filter(filter_expr)
 
-    lf = _keep_fname(lf, include_file_paths)
+    if include_file_paths is not None:
+        lf = lf.with_columns(_polars.col("fname").alias(include_file_paths))
 
     # Separate lines into fields using `separator`
     if separator is not None:
