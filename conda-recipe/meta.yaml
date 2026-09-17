@@ -1,5 +1,5 @@
 {% set name = "fpathlib" %}
-{% set version = "0.1.3" %}
+{% set version = "0.1.4" %}
 
 package:
   name: {{ name|lower }}
@@ -7,7 +7,7 @@ package:
 
 source:
   url: https://pypi.io/packages/source/{{ name[0] }}/{{ name }}/fpathlib-{{ version }}.tar.gz
-  sha256: 059dbf937c6e965ef33f15aa214b2f354550d5dfa26b9030357954cce8c51874
+  sha256: 8ff44332a465c2adb5c45f94d6ee79c958fb50c39e896b16734d0d8208026c77
 
 build:
   noarch: python

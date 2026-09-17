@@ -21,7 +21,14 @@ python3 -m build
 # 0.1.3/0.1.2 tag-collision incident slipped past a git-describe check even
 # though the build itself came out as a .devN), inspect what actually got
 # built. This is the real signal of whether the release is clean.
-dev_artifacts=$(ls dist/ | grep -c '\.dev[0-9]')
+#
+# `grep -c` exits 1 (not just prints "0") when it finds zero matches --
+# with `set -e` active (deploy.sh sets it, and this script is sourced into
+# that same shell), that silently killed the whole deploy right here for
+# every *clean* release build (the exact case with 0 .dev files), before
+# ever reaching twine upload. `|| true` keeps the count without letting
+# grep's "no matches" exit status abort the script.
+dev_artifacts=$(ls dist/ | grep -c '\.dev[0-9]' || true)
 if [ $allow_dev -eq 0 ] && [ "$dev_artifacts" != "0" ]
 then
   echo "built version is a dev version (tag doesn't point at a clean, distinct commit -- check 'git describe --tags --long' and 'git status'), not uploading to pypi"
