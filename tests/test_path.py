@@ -321,20 +321,38 @@ class TestExpandFpathDecorator:
         expanded = expand_fpath(str(tree / "tr{trajectory:d}/job{job:d}.log"))
         assert f(expanded) is expanded
 
-    def test_require_expandable_raises_by_default(self):
+    def test_require_expandable_false_is_the_default(self):
         @expand_fpath_decorator
+        def f(fpath):
+            return fpath
+
+        assert f("plain/no/fields.log") == "plain/no/fields.log"
+
+    def test_require_expandable_true_raises(self):
+        @expand_fpath_decorator(require_expandable=True)
         def f(expanded_fpath):
             return expanded_fpath
 
         with pytest.raises(ValueError):
             f("plain/no/fields.log")
 
-    def test_require_expandable_false_passes_through(self):
-        @expand_fpath_decorator(require_expandable=False)
+    def test_post_process_skipped_for_non_expandable_path(self):
+        # There's no ExpandedFPath to hand post_process when fpath was
+        # never expanded -- confirm it's skipped entirely rather than
+        # crashing on a missing expanded_fpath.
+        calls = []
+
+        def post(result, expanded_fpath):
+            calls.append((result, expanded_fpath))
+            return result
+
+        @expand_fpath_decorator(post_process=post)
         def f(fpath):
             return fpath
 
-        assert f("plain/no/fields.log") == "plain/no/fields.log"
+        result = f("plain/no/fields.log")
+        assert result == "plain/no/fields.log"
+        assert calls == []
 
     def test_post_process_is_called_with_result_and_expanded_fpath(self, tree):
         calls = []

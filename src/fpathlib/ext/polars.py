@@ -160,7 +160,7 @@ def scan_parquet(expanded_fpath, *args, **kwargs):
 
 
 # TODO rename expanded_fpath as source
-@expand_fpath_decorator(require_expandable=False, post_process=join_metadata)
+@expand_fpath_decorator(post_process=join_metadata)
 def scan_txt(
     expanded_fpath,
     filter_expr=None,
