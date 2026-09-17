@@ -31,43 +31,6 @@ class FPath:
     def __repr__(self):
         return "FPath({!r})".format(self.fpath)
 
-    def _compile_parser(self):
-        """
-        Compile `self.fpath` for metadata extraction, after checking it
-        doesn't mix a {} named capture with a bare glob wildcard outside of
-        one -- shared by :meth:`.expand` and :meth:`.iexpand`.
-        """
-
-        parser = parse.compile(self.fpath)
-
-        # glob() (used to find files) and `parse` (used above to extract
-        # {name} values) disagree about what a bare '*', '?', or '[...]'
-        # means outside a {} capture: glob treats it as a wildcard, but
-        # parse's format-string language only special-cases {...} and
-        # reads everything else -- including '*' -- as literal text to
-        # match. A pattern like "{a}/*" would find files fine via glob()
-        # but then fail to parse against that same string, since real
-        # filenames don't literally contain "/*" -- silently producing
-        # metadata=None for every match, or raising a confusing "metadata
-        # not found" error, with no indication that '*' was the actual
-        # problem. Fail fast and explain it instead. Only applies when
-        # there's a {} capture to begin with -- a plain glob with none is a
-        # separate, unaffected case (no metadata is expected from it).
-        if parser.named_fields:
-            literal_fpath = re.sub(r"\{.*?\}", "", self.fpath)
-            for c in "*?[":
-                if c in literal_fpath:
-                    msg = (
-                        f"glob wildcard {c!r} outside a {{}} capture is not "
-                        f"supported in {self.fpath!r} -- 'parse' treats it "
-                        "as a literal character, not a wildcard. Use a "
-                        "named capture (e.g. '{a}/{b}') if you want that "
-                        "segment captured too."
-                    )
-                    raise ValueError(msg)
-
-        return parser
-
     def iexpand(self, exclude_path_patterns=None, require_metadata=True, errors="raise"):
         """
         Lazily yield each :obj:`.Path` matching the f-string pattern, one at
@@ -102,7 +65,33 @@ class FPath:
             msg = f"invalid value for 'errors': {errors}"
             raise ValueError(msg)
 
-        parser = self._compile_parser()
+        parser = parse.compile(self.fpath)
+
+        # glob() (used below to find files) and `parse` (used above to
+        # extract {name} values) disagree about what a bare '*', '?', or
+        # '[...]' means outside a {} capture: glob treats it as a wildcard,
+        # but parse's format-string language only special-cases {...} and
+        # reads everything else -- including '*' -- as literal text to
+        # match. A pattern like "{a}/*" would find files fine via glob()
+        # but then fail to parse against that same string, since real
+        # filenames don't literally contain "/*" -- silently producing
+        # metadata=None for every match, or raising a confusing "metadata
+        # not found" error, with no indication that '*' was the actual
+        # problem. Fail fast and explain it instead. Only applies when
+        # there's a {} capture to begin with -- a plain glob with none is a
+        # separate, unaffected case (no metadata is expected from it).
+        if parser.named_fields:
+            literal_fpath = re.sub(r"\{.*?\}", "", self.fpath)
+            for c in "*?[":
+                if c in literal_fpath:
+                    msg = (
+                        f"glob wildcard {c!r} outside a {{}} capture is not "
+                        f"supported in {self.fpath!r} -- 'parse' treats it "
+                        "as a literal character, not a wildcard. Use a "
+                        "named capture (e.g. '{a}/{b}') if you want that "
+                        "segment captured too."
+                    )
+                    raise ValueError(msg)
 
         n = 0
         for fname in iglob(re.sub(r"\{.*?\}", "*", self.fpath)):
