@@ -252,6 +252,30 @@ class TestIncludeFilePaths:
         ).collect()
         assert "source_file" in df2.columns
 
+    def test_include_file_paths_named_fname_is_not_lost(self, tmp_path):
+        # include_file_paths="fname" used to silently vanish: aliasing
+        # "fname" -> "fname" was a no-op, so join_metadata's unconditional
+        # drop("fname") deleted the caller's only copy. The internal join
+        # key is now reserved as "_fname" specifically so this can't happen.
+        (tmp_path / "tr1").mkdir()
+        (tmp_path / "tr1" / "x.log").write_text("a b c\n")
+        (tmp_path / "tr2").mkdir()
+        (tmp_path / "tr2" / "x.log").write_text("d e f\n")
+
+        df = pl.scan_txt(
+            str(tmp_path / "tr{n:d}/x.log"),
+            separator=" ",
+            has_header=False,
+            include_file_paths="fname",
+        ).collect()
+
+        assert "fname" in df.columns
+        assert "_fname" not in df.columns
+        assert set(df["fname"]) == {
+            str(tmp_path / "tr1" / "x.log"),
+            str(tmp_path / "tr2" / "x.log"),
+        }
+
 
 class TestExpandedFPathToPolars:
     def test_none_metadata_becomes_empty_columns(self, tmp_path):

@@ -14,10 +14,13 @@ def __getattr__(name):
 
 
 def join_metadata(df, expanded_fpath):
-    return df.join(
-        expanded_fpath.to_polars(lazy=isinstance(df, _polars.LazyFrame)),
-        on="fname",
-    ).drop("fname")
+    # "fname" is ExpandedFPath.to_polars()'s normal, public column name --
+    # rename it to the same reserved "_fname" that scan_csv/scan_parquet/
+    # scan_txt use internally, so the join key can never collide with an
+    # `include_file_paths` name a caller chose (including "fname" itself).
+    metadata = expanded_fpath.to_polars(lazy=isinstance(df, _polars.LazyFrame))
+    metadata = metadata.rename({"fname": "_fname"})
+    return df.join(metadata, on="_fname").drop("_fname")
 
 
 @expand_fpath_decorator(postprocess=join_metadata)
@@ -124,13 +127,13 @@ def scan_csv(expanded_fpath, include_file_paths=None, *args, **kwargs):
 
     lf = _polars.scan_csv(
         expanded_fpath,
-        include_file_paths="fname",
+        include_file_paths="_fname",
         *args,
         **kwargs,
     )
 
     if include_file_paths is not None:
-        lf = lf.with_columns(_polars.col("fname").alias(include_file_paths))
+        lf = lf.with_columns(_polars.col("_fname").alias(include_file_paths))
 
     return lf
 
@@ -162,13 +165,13 @@ def scan_parquet(expanded_fpath, include_file_paths=None, *args, **kwargs):
 
     lf = _polars.scan_parquet(
         expanded_fpath,
-        include_file_paths="fname",
+        include_file_paths="_fname",
         *args,
         **kwargs,
     )
 
     if include_file_paths is not None:
-        lf = lf.with_columns(_polars.col("fname").alias(include_file_paths))
+        lf = lf.with_columns(_polars.col("_fname").alias(include_file_paths))
 
     return lf
 
@@ -240,13 +243,13 @@ def scan_txt(
     """
 
     # TODO there are forbidden variables that should not be in expanded_fpath
-    # such as 'line' and 'fields' and 'fname'
+    # such as 'line' and 'fields' and '_fname'
 
     # TODO schema and schema_overrides is probably broken
 
     lf = _polars.scan_csv(
         expanded_fpath,
-        include_file_paths="fname",
+        include_file_paths="_fname",
         separator="\n",
         new_columns=["line"],
         has_header=False,
@@ -259,7 +262,7 @@ def scan_txt(
         lf = lf.filter(filter_expr)
 
     if include_file_paths is not None:
-        lf = lf.with_columns(_polars.col("fname").alias(include_file_paths))
+        lf = lf.with_columns(_polars.col("_fname").alias(include_file_paths))
 
     # Separate lines into fields using `separator`
     if separator is not None:
@@ -304,7 +307,7 @@ def scan_txt(
 
         else:
             if sample_schema is not None:
-                n_fields = len(sample_schema) - 1  # minus 'fname'
+                n_fields = len(sample_schema) - 1  # minus '_fname'
             else:
                 n_fields = (
                     lf.head(1)
@@ -364,7 +367,7 @@ def scan_txt(
                 inferred_schema = {
                     name: dtype
                     for name, dtype in sample_schema.items()
-                    if name != "fname"
+                    if name != "_fname"
                 }
             else:
                 sample = (
