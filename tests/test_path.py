@@ -336,42 +336,6 @@ class TestExpandFpathDecorator:
         with pytest.raises(ValueError):
             f("plain/no/fields.log")
 
-    def test_postprocess_skipped_for_non_expandable_path(self):
-        # There's no ExpandedFPath to hand postprocess when fpath was
-        # never expanded -- confirm it's skipped entirely rather than
-        # crashing on a missing expanded_fpath.
-        calls = []
-
-        def post(result, expanded_fpath):
-            calls.append((result, expanded_fpath))
-            return result
-
-        @expand_fpath_decorator(postprocess=post)
-        def f(fpath):
-            return fpath
-
-        result = f("plain/no/fields.log")
-        assert result == "plain/no/fields.log"
-        assert calls == []
-
-    def test_postprocess_is_called_with_result_and_expanded_fpath(self, tree):
-        calls = []
-
-        def post(result, expanded_fpath):
-            calls.append((result, expanded_fpath))
-            return result * 2
-
-        @expand_fpath_decorator(postprocess=post)
-        def f(expanded_fpath):
-            return len(expanded_fpath)
-
-        result = f(str(tree / "tr{trajectory:d}/job{job:d}.log"))
-
-        assert result == 8
-        assert len(calls) == 1
-        assert calls[0][0] == 4
-        assert isinstance(calls[0][1], ExpandedFPath)
-
     def test_exclude_and_require_metadata_kwargs_are_consumed(self, tree):
         (tree / "trX").mkdir()
         (tree / "trX" / "jobY.log").write_text("bad\n")

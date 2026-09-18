@@ -63,34 +63,37 @@ def iexpand_fpath(fpath, *, exclude_path_patterns=None, require_metadata=True, e
     )
 
 
-def expand_fpath_decorator(f=None, require_expandable=False, postprocess=None):
+def expand_fpath_decorator(f=None, require_expandable=False):
     """
-    Decorator for :func:`.expand_fpath`.
+    Decorator for :func:`.expand_fpath`. Expands `fpath` (if it has {}
+    named captures) before calling the wrapped function with the result;
+    otherwise calls it with `fpath` unchanged. Callers that need to react
+    differently depending on whether expansion actually happened (e.g. to
+    join in captured metadata) should check `isinstance(expanded_fpath,
+    ExpandedFPath)` themselves, inside the wrapped function -- this
+    decorator doesn't hook into that, it only handles expansion.
 
     Parameters
     ----------
     f : :obj:`callable`
-        A function that takes an :obj:`.ExpandedFPath` as its first argument.
+        A function that takes an :obj:`.ExpandedFPath` (or, if not
+        expandable and `require_expandable` is False, the original `fpath`)
+        as its first argument.
     require_expandable : :obj:`bool`
-        Whether to require `fpath` to have {} named captures. If False
-        (the default), a plain literal path or glob is passed straight
-        through to `f` unexpanded, with `postprocess` skipped -- there's
-        no ExpandedFPath to hand it in that case. (Default: False)
-    postprocess : :obj:`callable`
-        A function that takes the output of `f` and the :obj:`.ExpandedFPath`.
-        (Default: None).
+        Whether to require `fpath` to have {} named captures, raising
+        ValueError otherwise. If False (the default), a plain literal path
+        or glob is passed straight through to `f` unexpanded. (Default: False)
     """
 
     def decorator(f):
         @wraps(f)
         def wrapper(fpath, *args, **kwargs):
-            # If fpath is an :obj:`ExpandedFPath`, just call f with it.
+            # If fpath is already an :obj:`ExpandedFPath`, just call f with it.
             if isinstance(fpath, ExpandedFPath):
-                expanded_fpath = fpath
-                result = f(fpath, *args, **kwargs)
+                return f(fpath, *args, **kwargs)
 
             # Expand fpath if it is expandable.
-            elif is_expandable(fpath):
+            if is_expandable(fpath):
                 exclude_path_patterns = kwargs.pop("exclude_path_patterns", None)
                 require_metadata = kwargs.pop("require_metadata", True)
                 expanded_fpath = expand_fpath(
@@ -98,23 +101,13 @@ def expand_fpath_decorator(f=None, require_expandable=False, postprocess=None):
                     exclude_path_patterns=exclude_path_patterns,
                     require_metadata=require_metadata,
                 )
-                result = f(expanded_fpath, *args, **kwargs)
+                return f(expanded_fpath, *args, **kwargs)
 
-            # fpath has no {} captures, so there's no ExpandedFPath to
-            # build -- nothing for postprocess (e.g. join_metadata) to
-            # join metadata from. Call f directly and return immediately,
-            # skipping postprocess entirely, rather than falling through
-            # to it with no expanded_fpath to give it.
-            else:
-                if require_expandable:
-                    msg = f"fpath not expandable: '{fpath}'"
-                    raise ValueError(msg)
-                return f(fpath, *args, **kwargs)
-
-            if postprocess is not None:
-                result = postprocess(result, expanded_fpath)
-
-            return result
+            # fpath has no {} captures.
+            if require_expandable:
+                msg = f"fpath not expandable: '{fpath}'"
+                raise ValueError(msg)
+            return f(fpath, *args, **kwargs)
 
         return wrapper
 
