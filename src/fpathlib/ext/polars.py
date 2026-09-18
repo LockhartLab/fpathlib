@@ -1,4 +1,3 @@
-from functools import wraps
 import polars as _polars
 from fpathlib import expand_fpath_decorator, ExpandedFPath
 
@@ -18,6 +17,12 @@ def join_metadata(df, expanded_fpath):
     # rename it to the same reserved "_fname" that scan_csv/scan_parquet/
     # scan_txt use internally, so the join key can never collide with an
     # `include_file_paths` name a caller chose (including "fname" itself).
+    #
+    # This function only runs for expandable input (there's no metadata to
+    # join otherwise -- see expand_fpath_decorator). For non-expandable
+    # input (a literal path or plain glob), this drop("_fname") never
+    # happens, so scan_csv/scan_parquet/scan_txt each drop it themselves
+    # in that case instead.
     metadata = expanded_fpath.to_polars(lazy=isinstance(df, _polars.LazyFrame))
     metadata = metadata.rename({"fname": "_fname"})
     return df.join(metadata, on="_fname").drop("_fname")
@@ -138,6 +143,12 @@ def scan_csv(expanded_fpath, include_file_paths=None, *args, **kwargs):
     if include_file_paths is not None:
         lf = lf.with_columns(_polars.col("_fname").alias(include_file_paths))
 
+    if not isinstance(expanded_fpath, ExpandedFPath):
+        # No {} captures means no metadata to join, so join_metadata (this
+        # function's postprocess) never runs -- its drop("_fname") won't
+        # happen either. Drop it here instead so it doesn't leak.
+        lf = lf.drop("_fname")
+
     return lf
 
 
@@ -175,6 +186,11 @@ def scan_parquet(expanded_fpath, include_file_paths=None, *args, **kwargs):
 
     if include_file_paths is not None:
         lf = lf.with_columns(_polars.col("_fname").alias(include_file_paths))
+
+    if not isinstance(expanded_fpath, ExpandedFPath):
+        # See scan_csv's identical check above -- join_metadata's
+        # drop("_fname") never runs for non-expandable input.
+        lf = lf.drop("_fname")
 
     return lf
 
@@ -266,6 +282,13 @@ def scan_txt(
     if include_file_paths is not None:
         lf = lf.with_columns(_polars.col("_fname").alias(include_file_paths))
 
+    if not isinstance(expanded_fpath, ExpandedFPath):
+        # See scan_csv's identical check -- join_metadata's drop("_fname")
+        # never runs for non-expandable input, including the recursive
+        # single-file sample call below (expanded_fpath[0] is a plain
+        # Path, not an ExpandedFPath).
+        lf = lf.drop("_fname")
+
     # Can filter lines before doing any further processing
     # This could be to remove lines with comments, etc.
     if line_filter is not None:
@@ -315,7 +338,10 @@ def scan_txt(
 
         else:
             if sample_schema is not None:
-                n_fields = len(sample_schema) - 1  # minus '_fname'
+                # The recursive sample call above is always non-expandable
+                # (expanded_fpath[0] is a plain Path), so it already drops
+                # "_fname" itself -- no adjustment needed here.
+                n_fields = len(sample_schema)
             else:
                 n_fields = (
                     lf.head(1)
@@ -372,11 +398,9 @@ def scan_txt(
         # Infer dtypes?
         if infer_schema:
             if sample_schema is not None:
-                inferred_schema = {
-                    name: dtype
-                    for name, dtype in sample_schema.items()
-                    if name != "_fname"
-                }
+                # The recursive sample call already drops "_fname" (see
+                # above), so no need to filter it back out here.
+                inferred_schema = dict(sample_schema.items())
             else:
                 sample = (
                     lf.head(kwargs.get("infer_schema_length", 100))

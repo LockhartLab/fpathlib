@@ -276,6 +276,33 @@ class TestIncludeFilePaths:
             str(tmp_path / "tr2" / "x.log"),
         }
 
+    def test_fname_not_leaked_for_non_expandable_input(self, tmp_path):
+        # join_metadata (which normally drops the internal "_fname") never
+        # runs for non-expandable input (a literal path or plain glob --
+        # no metadata to join), so scan_csv/scan_parquet/scan_txt have to
+        # drop it themselves in that case instead.
+        (tmp_path / "x.csv").write_text("a,b,c\n")
+        (tmp_path / "x.log").write_text("a b c\n")
+
+        df_csv = pl.scan_csv(str(tmp_path / "x.csv"), has_header=False).collect()
+        assert "_fname" not in df_csv.columns
+
+        df_txt = pl.scan_txt(
+            str(tmp_path / "x.log"), separator=" ", has_header=False
+        ).collect()
+        assert "_fname" not in df_txt.columns
+
+    def test_include_file_paths_works_for_non_expandable_input(self, tmp_path):
+        (tmp_path / "x.csv").write_text("a,b,c\n")
+
+        df = pl.scan_csv(
+            str(tmp_path / "x.csv"), has_header=False, include_file_paths="source"
+        ).collect()
+
+        assert "source" in df.columns
+        assert "_fname" not in df.columns
+        assert df["source"].item() == str(tmp_path / "x.csv")
+
 
 class TestLineFilterAndIncludeLine:
     def _write(self, tmp_path, name, text):
