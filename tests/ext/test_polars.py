@@ -277,6 +277,100 @@ class TestIncludeFilePaths:
         }
 
 
+class TestLineFilterAndIncludeLine:
+    def _write(self, tmp_path, name, text):
+        (tmp_path / name).write_text(text)
+
+    def test_line_filter(self, tmp_path):
+        self._write(tmp_path, "tr1.log", "# comment\na b c\n")
+        self._write(tmp_path, "tr2.log", "# comment\nd e f\n")
+
+        df = pl.scan_txt(
+            str(tmp_path / "tr{n:d}.log"),
+            separator=" ",
+            has_header=False,
+            line_filter=lambda line: line.str.starts_with("#").not_(),
+        ).collect()
+
+        assert df.height == 2
+        assert set(df["field_0"]) == {"a", "d"}
+
+    def test_line_filter_receives_line_expr(self, tmp_path):
+        # confirms fpathlib calls line_filter(pl.col("_line")) itself,
+        # rather than the caller needing to reference any column by name
+        self._write(tmp_path, "tr1.log", "keep\ndrop\n")
+
+        calls = []
+
+        def predicate(line):
+            calls.append(line)
+            return line != "drop"
+
+        df = pl.scan_txt(
+            str(tmp_path / "tr1.log"), has_header=False, line_filter=predicate
+        ).collect()
+
+        assert len(calls) == 1
+        assert isinstance(calls[0], pl.Expr)
+        assert list(df["line"]) == ["keep"]
+
+    def test_include_line_with_separator(self, tmp_path):
+        self._write(tmp_path, "tr1.log", "a b c\n")
+
+        df = pl.scan_txt(
+            str(tmp_path / "tr1.log"),
+            separator=" ",
+            has_header=False,
+            include_line="raw",
+        ).collect()
+
+        assert "raw" in df.columns
+        assert "_line" not in df.columns
+        assert df["raw"].item() == "a b c"
+
+    def test_no_separator_no_include_line_defaults_to_line(self, tmp_path):
+        self._write(tmp_path, "tr1.log", "hello\n")
+
+        df = pl.scan_txt(str(tmp_path / "tr1.log"), has_header=False).collect()
+
+        assert "line" in df.columns
+        assert "_line" not in df.columns
+        assert df["line"].item() == "hello"
+
+    def test_no_separator_include_line_custom_name(self, tmp_path):
+        self._write(tmp_path, "tr1.log", "hello\n")
+
+        df = pl.scan_txt(
+            str(tmp_path / "tr1.log"), has_header=False, include_line="raw"
+        ).collect()
+
+        assert "raw" in df.columns
+        assert "line" not in df.columns
+        assert "_line" not in df.columns
+        assert df["raw"].item() == "hello"
+
+    def test_include_line_and_include_file_paths_together(self, tmp_path):
+        # Uses an expandable pattern (not a plain literal path) so
+        # join_metadata actually runs and drops "_fname" -- see the
+        # separate, pre-existing "_fname leaks for non-expandable input"
+        # issue this surfaced, which is unrelated to include_line/
+        # line_filter and not fixed here.
+        (tmp_path / "tr1").mkdir()
+        self._write(tmp_path / "tr1", "x.log", "a b\n")
+
+        df = pl.scan_txt(
+            str(tmp_path / "tr{n:d}/x.log"),
+            separator=" ",
+            has_header=False,
+            include_line="raw",
+            include_file_paths="source",
+        ).collect()
+
+        assert set(df.columns) >= {"raw", "source", "field_0", "field_1", "n"}
+        assert "_line" not in df.columns
+        assert "_fname" not in df.columns
+
+
 class TestExpandedFPathToPolars:
     def test_none_metadata_becomes_empty_columns(self, tmp_path):
         # expand_fpath(..., require_metadata=False) on a pattern with no

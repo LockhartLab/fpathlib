@@ -50,7 +50,7 @@ def read_csv(expanded_fpath, *args, **kwargs):
 @expand_fpath_decorator(postprocess=join_metadata)
 def read_txt(
     expanded_fpath,
-    filter_expr=None,
+    line_filter=None,
     separator=None,
     new_columns=None,
     has_header=False,
@@ -68,8 +68,11 @@ def read_txt(
     ----------
     expanded_fpath : :obj:`fpathlib.ExpandedFPath`
         An expanded f-string path.
-    filter_expr : :obj:`polars.Expr`, optional
-        Filter the lines before splitting by the separator (if provided).
+    line_filter : :obj:`callable`, optional
+        A function that takes a :obj:`polars.Expr` for the line's text and
+        returns a boolean :obj:`polars.Expr`, used to filter lines before
+        splitting by the separator. E.g.
+        `lambda line: line.str.starts_with("#").not_()`.
     separator : :obj:`str`, optional
         Deliminatorg to split each line into fields.
     new_columns : :obj:`list`[:obj:`str`], optional
@@ -91,7 +94,7 @@ def read_txt(
 
     return scan_txt.__wrapped__(
         expanded_fpath,
-        filter_expr=filter_expr,
+        line_filter=line_filter,
         separator=separator,
         new_columns=new_columns,
         has_header=has_header,
@@ -180,11 +183,11 @@ def scan_parquet(expanded_fpath, include_file_paths=None, *args, **kwargs):
 @expand_fpath_decorator(postprocess=join_metadata)
 def scan_txt(
     expanded_fpath,
-    filter_expr=None,
+    line_filter=None,
     separator=None,
     new_columns=None,
     has_header=False,
-    keep_line=False,
+    include_line=None,
     include_file_paths=None,
     usecols=None,
     validate_schema=True,
@@ -202,8 +205,11 @@ def scan_txt(
     ----------
     expanded_fpath : :obj:`fpathlib.ExpandedFPath`
         An expanded f-string path.
-    filter_expr : :obj:`polars.Expr`, optional
-        Filter the lines before splitting by the separator (if provided).
+    line_filter : :obj:`callable`, optional
+        A function that takes a :obj:`polars.Expr` for the line's text and
+        returns a boolean :obj:`polars.Expr`, used to filter lines before
+        splitting by the separator. E.g.
+        `lambda line: line.str.starts_with("#").not_()`.
     separator : :obj:`str`, optional
         Deliminatorg to split each line into fields.
     new_columns : :obj:`list`[:obj:`str`], optional
@@ -213,8 +219,9 @@ def scan_txt(
         Whether the text files have a header line that should be skipped. The header
         must have the same delimiter as the separator provided in `separator`.
         (Default: False)
-    keep_line : :obj:`bool`
-        Whether to keep the original line as a column in the output.
+    include_line : :obj:`str`, optional
+        Name to give a column of each row's original, unsplit line text in
+        the output. Without this, it isn't kept in the result. (Default: None)
     include_file_paths : :obj:`str`, optional
         Name to give a column of each row's source file path in the
         output. The file path is always used internally to join captured
@@ -243,7 +250,7 @@ def scan_txt(
     """
 
     # TODO there are forbidden variables that should not be in expanded_fpath
-    # such as 'line' and 'fields' and '_fname'
+    # such as '_line' and 'fields' and '_fname'
 
     # TODO schema and schema_overrides is probably broken
 
@@ -251,28 +258,29 @@ def scan_txt(
         expanded_fpath,
         include_file_paths="_fname",
         separator="\n",
-        new_columns=["line"],
+        new_columns=["_line"],
         has_header=False,
         **kwargs,
     )
 
-    # Can filter lines before doing any further processing
-    # This could be to remove lines with comments, etc.
-    if filter_expr is not None:
-        lf = lf.filter(filter_expr)
-
     if include_file_paths is not None:
         lf = lf.with_columns(_polars.col("_fname").alias(include_file_paths))
+
+    # Can filter lines before doing any further processing
+    # This could be to remove lines with comments, etc.
+    if line_filter is not None:
+        lf = lf.filter(line_filter(_polars.col("_line")))
+
+    if include_line is not None:
+        lf = lf.with_columns(_polars.col("_line").alias(include_line))
 
     # Separate lines into fields using `separator`
     if separator is not None:
         # Separate line into fields by separator
         lf = lf.with_columns(
-            _polars.col("line").str.split(separator, literal=False).alias("fields")
+            _polars.col("_line").str.split(separator, literal=False).alias("fields")
         )
-
-        if not keep_line:
-            lf = lf.drop("line")
+        lf = lf.drop("_line")
 
         # With many matched files, inferring the field count/dtypes directly
         # against the full glob is extremely slow (every file has to be opened
@@ -290,7 +298,7 @@ def scan_txt(
         ):
             sample_schema = scan_txt(
                 expanded_fpath[0],
-                filter_expr=filter_expr,
+                line_filter=line_filter,
                 separator=separator,
                 new_columns=new_columns,
                 has_header=has_header,
@@ -378,5 +386,18 @@ def scan_txt(
                 )
                 inferred_schema = _polars.read_csv(sample).schema
             lf = lf.cast(inferred_schema)
+
+    elif include_line is None:
+        # No separator means each row is just the raw line -- that's the
+        # whole point of this mode, so it has to stay visible somehow.
+        # Fall back to the traditional "line" name rather than leaking the
+        # internal "_line" name, since the caller didn't ask for a specific
+        # one via include_line.
+        lf = lf.rename({"_line": "line"})
+    else:
+        # include_line was given, so the alias was already created above
+        # (before this if/elif/else) -- drop the internal "_line" itself so
+        # it doesn't also leak into the output alongside it.
+        lf = lf.drop("_line")
 
     return lf
