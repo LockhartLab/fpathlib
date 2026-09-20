@@ -65,7 +65,7 @@ def join_metadata(f):
     return wrapper
 
 
-def read_csv(fpath, *args, **kwargs):
+def read_csv(source, *args, **kwargs):
     """
     Read the paths in the collection as CSV files, and return a
     :obj:`polars.DataFrame` along with the metadata captured from the path
@@ -73,8 +73,8 @@ def read_csv(fpath, *args, **kwargs):
 
     Parameters
     ----------
-    fpath : :obj:`str` or :obj:`fpathlib.ExpandedFPath`
-        An f-string path, or an already-expanded one.
+    source : :obj:`fpathlib.ExpandedFPath`, or any type accepted by :obj:`polars.read_csv`
+        An expanded f-string path, or a plain path/glob.
     *args
         Positional arguments to pass to :meth:`polars.read_csv`.
     **kwargs
@@ -85,11 +85,11 @@ def read_csv(fpath, *args, **kwargs):
     :obj:`polars.DataFrame`
     """
 
-    return scan_csv(fpath, *args, **kwargs).collect()
+    return scan_csv(source, *args, **kwargs).collect()
 
 
 def read_txt(
-    fpath,
+    source,
     line_filter=None,
     separator=None,
     new_columns=None,
@@ -106,8 +106,8 @@ def read_txt(
 
     Parameters
     ----------
-    fpath : :obj:`str` or :obj:`fpathlib.ExpandedFPath`
-        An f-string path, or an already-expanded one.
+    source : :obj:`fpathlib.ExpandedFPath`, or any type accepted by :obj:`polars.scan_csv`
+        An expanded f-string path, or a plain path/glob.
     line_filter : :obj:`callable`, optional
         A function that takes a :obj:`polars.Expr` for the line's text and
         returns a boolean :obj:`polars.Expr`, used to filter lines before
@@ -133,7 +133,7 @@ def read_txt(
     """
 
     return scan_txt(
-        fpath,
+        source,
         line_filter=line_filter,
         separator=separator,
         new_columns=new_columns,
