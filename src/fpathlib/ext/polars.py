@@ -13,26 +13,7 @@ def __getattr__(name):
     return getattr(_polars, name)
 
 
-def _join_metadata(lf, source):
-    # Join captured {} metadata into `lf`, keyed on the reserved "_fname"
-    # column scan_csv/scan_parquet always create, then always drop
-    # "_fname" itself. Callers that want to keep the file path under a
-    # different name must alias it to that name *before* this runs (see
-    # with_join_metadata) -- once this returns, "_fname" is gone either way.
-    if isinstance(source, ExpandedFPath):
-        # "fname" is ExpandedFPath.to_polars()'s normal, public column
-        # name; rename it to the same reserved "_fname" scan_csv/
-        # scan_parquet use, so the join key can never collide with an
-        # `include_file_paths` name a caller chose (including "fname"
-        # itself).
-        metadata = source.to_polars(lazy=isinstance(lf, _polars.LazyFrame))
-        metadata = metadata.rename({"fname": "_fname"})
-        lf = lf.join(metadata, on="_fname")
-
-    return lf.drop("_fname")
-
-
-def with_join_metadata(f):
+def join_metadata(f):
     """
     Wraps a scan_csv-shaped function `f(source, *args, **kwargs) ->
     LazyFrame` with metadata-joining and "_fname" cleanup, applied
@@ -42,7 +23,7 @@ def with_join_metadata(f):
     pattern:
 
         @expand_fpath_decorator
-        @with_join_metadata
+        @join_metadata
         def scan_csv(source, ...): ...
 
     Guards against getting that order backwards: if `source` still looks
@@ -57,12 +38,29 @@ def with_join_metadata(f):
         lf = f(source, *args, **kwargs)
         if not isinstance(source, ExpandedFPath) and is_expandable(source):
             msg = (
-                f"with_join_metadata received an unexpanded pattern "
+                f"join_metadata received an unexpanded pattern "
                 f"{source!r} -- @expand_fpath_decorator must be the outer "
-                "decorator, applied above (not below) @with_join_metadata"
+                "decorator, applied above (not below) @join_metadata"
             )
             raise RuntimeError(msg)
-        return _join_metadata(lf, source)
+
+        # Join captured {} metadata into `lf`, keyed on the reserved
+        # "_fname" column scan_csv/scan_parquet always create, then always
+        # drop "_fname" itself. Callers that want to keep the file path
+        # under a different name must alias it to that name *before* this
+        # runs (inside `f`'s own body) -- by the time this returns,
+        # "_fname" is gone either way.
+        if isinstance(source, ExpandedFPath):
+            # "fname" is ExpandedFPath.to_polars()'s normal, public column
+            # name; rename it to the same reserved "_fname" scan_csv/
+            # scan_parquet use, so the join key can never collide with an
+            # `include_file_paths` name a caller chose (including "fname"
+            # itself).
+            metadata = source.to_polars(lazy=isinstance(lf, _polars.LazyFrame))
+            metadata = metadata.rename({"fname": "_fname"})
+            lf = lf.join(metadata, on="_fname")
+
+        return lf.drop("_fname")
 
     return wrapper
 
@@ -146,7 +144,7 @@ def read_txt(
 
 
 @expand_fpath_decorator
-@with_join_metadata
+@join_metadata
 def scan_csv(source, include_file_paths=None, *args, **kwargs):
     """
     Scan the paths in the collection as CSV files, and return a
@@ -183,7 +181,7 @@ def scan_csv(source, include_file_paths=None, *args, **kwargs):
 
 
 @expand_fpath_decorator
-@with_join_metadata
+@join_metadata
 def scan_parquet(source, include_file_paths=None, *args, **kwargs):
     """
     Scan the paths in the collection as a parquet file, and return a
