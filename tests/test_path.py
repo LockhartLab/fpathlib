@@ -303,7 +303,7 @@ class TestIsExpandable:
         assert is_expandable(123) is False
 
 
-class TestExpandFpathDecorator:
+class TestExpandArg:
     def test_wraps_plain_string(self, tree):
         @expand_arg
         def f(expanded_fpath):

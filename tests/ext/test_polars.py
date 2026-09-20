@@ -510,3 +510,52 @@ class TestScanTxtValidateSchema:
 
         assert set(df.columns) == {"field_0", "field_1", "n"}
         assert df.height == 3
+
+
+class TestJoinMetadataGuard:
+    def test_correct_order_works(self, tmp_path):
+        # sanity check: scan_csv (which stacks @expand_arg outer,
+        # @join_metadata inner, correctly) actually joins metadata for an
+        # expandable pattern.
+        (tmp_path / "tr1").mkdir()
+        (tmp_path / "tr1" / "x.csv").write_text("a,b\n")
+
+        df = pl.scan_csv(
+            str(tmp_path / "tr{n:d}/x.csv"), has_header=False
+        ).collect()
+        assert "n" in df.columns
+
+    def test_misordered_decorators_raise(self, tmp_path):
+        # join_metadata must be the *inner* decorator (closer to `def`),
+        # with @expand_arg outside it, so `source` is already resolved by
+        # the time join_metadata's wrapper runs. Reproduce the opposite
+        # (join_metadata applied with no expansion having happened at all)
+        # and confirm it fails loudly rather than silently joining nothing.
+        (tmp_path / "tr1").mkdir()
+        (tmp_path / "tr1" / "x.csv").write_text("a,b\n")
+
+        def raw_scan_csv(source, *args, **kwargs):
+            return pl._polars.scan_csv(
+                source, include_file_paths="_fname", *args, **kwargs
+            )
+
+        broken = pl.join_metadata(raw_scan_csv)
+
+        with pytest.raises(RuntimeError, match="unexpanded pattern"):
+            broken(str(tmp_path / "tr{n:d}/x.csv"), has_header=False).collect()
+
+    def test_non_expandable_input_does_not_raise(self, tmp_path):
+        # A literal path/plain glob is correctly *not* an ExpandedFPath and
+        # is_expandable() is False for it too -- the guard must not treat
+        # this as a misordering error, since there was never any metadata
+        # to join in the first place.
+        (tmp_path / "x.csv").write_text("a,b\n")
+
+        def raw_scan_csv(source, *args, **kwargs):
+            return pl._polars.scan_csv(
+                source, include_file_paths="_fname", *args, **kwargs
+            )
+
+        wrapped = pl.join_metadata(raw_scan_csv)
+        df = wrapped(str(tmp_path / "x.csv"), has_header=False).collect()
+        assert "_fname" not in df.columns
