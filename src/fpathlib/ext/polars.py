@@ -1,5 +1,6 @@
+from functools import wraps
 import polars as _polars
-from fpathlib import expand_fpath_decorator, ExpandedFPath
+from fpathlib import expand_fpath_decorator, is_expandable, ExpandedFPath
 
 
 def __getattr__(name):
@@ -14,22 +15,56 @@ def __getattr__(name):
 
 def _join_metadata(lf, source):
     # Join captured {} metadata into `lf`, keyed on the reserved "_fname"
-    # column scan_csv/scan_parquet always create. Only does anything when
-    # there's actually metadata to join -- a literal path or plain glob
-    # (no {} captures) was never expanded, so `source` won't be an
-    # ExpandedFPath, and `lf` is returned unchanged.
-    if not isinstance(source, ExpandedFPath):
-        return lf
+    # column scan_csv/scan_parquet always create, then always drop
+    # "_fname" itself. Callers that want to keep the file path under a
+    # different name must alias it to that name *before* this runs (see
+    # with_join_metadata) -- once this returns, "_fname" is gone either way.
+    if isinstance(source, ExpandedFPath):
+        # "fname" is ExpandedFPath.to_polars()'s normal, public column
+        # name; rename it to the same reserved "_fname" scan_csv/
+        # scan_parquet use, so the join key can never collide with an
+        # `include_file_paths` name a caller chose (including "fname"
+        # itself).
+        metadata = source.to_polars(lazy=isinstance(lf, _polars.LazyFrame))
+        metadata = metadata.rename({"fname": "_fname"})
+        lf = lf.join(metadata, on="_fname")
 
-    # "fname" is ExpandedFPath.to_polars()'s normal, public column name;
-    # rename it to the same reserved "_fname" scan_csv/scan_parquet use,
-    # so the join key can never collide with an `include_file_paths` name
-    # a caller chose (including "fname" itself) -- that rename/drop
-    # happens separately, after this join, once "_fname" is no longer
-    # needed under its internal name.
-    metadata = source.to_polars(lazy=isinstance(lf, _polars.LazyFrame))
-    metadata = metadata.rename({"fname": "_fname"})
-    return lf.join(metadata, on="_fname")
+    return lf.drop("_fname")
+
+
+def with_join_metadata(f):
+    """
+    Wraps a scan_csv-shaped function `f(source, *args, **kwargs) ->
+    LazyFrame` with metadata-joining and "_fname" cleanup, applied
+    automatically to whatever `f` returns. Must be applied *inside*
+    @expand_fpath_decorator (i.e. listed closer to `def`), so `source`
+    here is always the already-expanded value, not the raw caller-supplied
+    pattern:
+
+        @expand_fpath_decorator
+        @with_join_metadata
+        def scan_csv(source, ...): ...
+
+    Guards against getting that order backwards: if `source` still looks
+    like an unexpanded {} pattern at this point, expansion can only have
+    failed to run (wrong decorator order, or this decorator used without
+    @expand_fpath_decorator at all) -- raise immediately rather than
+    silently joining no metadata.
+    """
+
+    @wraps(f)
+    def wrapper(source, *args, **kwargs):
+        lf = f(source, *args, **kwargs)
+        if not isinstance(source, ExpandedFPath) and is_expandable(source):
+            msg = (
+                f"with_join_metadata received an unexpanded pattern "
+                f"{source!r} -- @expand_fpath_decorator must be the outer "
+                "decorator, applied above (not below) @with_join_metadata"
+            )
+            raise RuntimeError(msg)
+        return _join_metadata(lf, source)
+
+    return wrapper
 
 
 def read_csv(fpath, *args, **kwargs):
@@ -111,6 +146,7 @@ def read_txt(
 
 
 @expand_fpath_decorator
+@with_join_metadata
 def scan_csv(source, include_file_paths=None, *args, **kwargs):
     """
     Scan the paths in the collection as CSV files, and return a
@@ -141,14 +177,13 @@ def scan_csv(source, include_file_paths=None, *args, **kwargs):
         *args,
         **kwargs,
     )
-    lf = _join_metadata(lf, source)
-
     if include_file_paths is not None:
-        return lf.rename({"_fname": include_file_paths})
-    return lf.drop("_fname")
+        lf = lf.with_columns(_polars.col("_fname").alias(include_file_paths))
+    return lf
 
 
 @expand_fpath_decorator
+@with_join_metadata
 def scan_parquet(source, include_file_paths=None, *args, **kwargs):
     """
     Scan the paths in the collection as a parquet file, and return a
@@ -179,11 +214,9 @@ def scan_parquet(source, include_file_paths=None, *args, **kwargs):
         *args,
         **kwargs,
     )
-    lf = _join_metadata(lf, source)
-
     if include_file_paths is not None:
-        return lf.rename({"_fname": include_file_paths})
-    return lf.drop("_fname")
+        lf = lf.with_columns(_polars.col("_fname").alias(include_file_paths))
+    return lf
 
 
 @expand_fpath_decorator
