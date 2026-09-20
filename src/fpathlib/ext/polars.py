@@ -12,24 +12,24 @@ def __getattr__(name):
     return getattr(_polars, name)
 
 
-def _finish_fname(lf, source, include_file_paths):
-    # Shared tail for scan_csv/scan_parquet: alias the internal "_fname"
-    # join key to a caller-chosen output name if requested, then either
-    # join in captured metadata or, if there's none to join (a literal
-    # path or plain glob with no {} captures), just drop "_fname".
-    if include_file_paths is not None:
-        lf = lf.with_columns(_polars.col("_fname").alias(include_file_paths))
-
+def _join_metadata(lf, source):
+    # Join captured {} metadata into `lf`, keyed on the reserved "_fname"
+    # column scan_csv/scan_parquet always create. Only does anything when
+    # there's actually metadata to join -- a literal path or plain glob
+    # (no {} captures) was never expanded, so `source` won't be an
+    # ExpandedFPath, and `lf` is returned unchanged.
     if not isinstance(source, ExpandedFPath):
-        return lf.drop("_fname")
+        return lf
 
     # "fname" is ExpandedFPath.to_polars()'s normal, public column name;
-    # rename it to the same reserved "_fname" used above, so the join key
-    # can never collide with an `include_file_paths` name a caller chose
-    # (including "fname" itself).
+    # rename it to the same reserved "_fname" scan_csv/scan_parquet use,
+    # so the join key can never collide with an `include_file_paths` name
+    # a caller chose (including "fname" itself) -- that rename/drop
+    # happens separately, after this join, once "_fname" is no longer
+    # needed under its internal name.
     metadata = source.to_polars(lazy=isinstance(lf, _polars.LazyFrame))
     metadata = metadata.rename({"fname": "_fname"})
-    return lf.join(metadata, on="_fname").drop("_fname")
+    return lf.join(metadata, on="_fname")
 
 
 def read_csv(fpath, *args, **kwargs):
@@ -141,8 +141,11 @@ def scan_csv(source, include_file_paths=None, *args, **kwargs):
         *args,
         **kwargs,
     )
+    lf = _join_metadata(lf, source)
 
-    return _finish_fname(lf, source, include_file_paths)
+    if include_file_paths is not None:
+        return lf.rename({"_fname": include_file_paths})
+    return lf.drop("_fname")
 
 
 @expand_fpath_decorator
@@ -176,8 +179,11 @@ def scan_parquet(source, include_file_paths=None, *args, **kwargs):
         *args,
         **kwargs,
     )
+    lf = _join_metadata(lf, source)
 
-    return _finish_fname(lf, source, include_file_paths)
+    if include_file_paths is not None:
+        return lf.rename({"_fname": include_file_paths})
+    return lf.drop("_fname")
 
 
 @expand_fpath_decorator
@@ -254,14 +260,15 @@ def scan_txt(
 
     # TODO schema and schema_overrides is probably broken
 
-    # Delegates to scan_csv (rather than calling _polars.scan_csv +
-    # _finish_fname directly) so the "_fname"/include_file_paths handling
-    # -- including the recursive single-file sample call below, since
-    # source[0] is a plain Path, not an ExpandedFPath -- isn't duplicated
-    # here. scan_csv's own @expand_fpath_decorator is a no-op on `source`
-    # at this point: it's already been resolved by scan_txt's decorator,
-    # so scan_csv just sees an ExpandedFPath or an already-unexpandable
-    # literal/glob, either way with nothing left to expand.
+    # Delegates to scan_csv (rather than calling _polars.scan_csv and
+    # doing the metadata-join/include_file_paths handling directly) so
+    # that handling -- including the recursive single-file sample call
+    # below, since source[0] is a plain Path, not an ExpandedFPath --
+    # isn't duplicated here. scan_csv's own @expand_fpath_decorator is a
+    # no-op on `source` at this point: it's already been resolved by
+    # scan_txt's decorator, so scan_csv just sees an ExpandedFPath or an
+    # already-unexpandable literal/glob, either way with nothing left to
+    # expand.
     lf = scan_csv(
         source,
         include_file_paths=include_file_paths,
