@@ -8,9 +8,9 @@ from fpathlib import (
     Path,
     FPath,
     ExpandedFPath,
-    expand_fpath,
-    iexpand_fpath,
-    expand_fpath_decorator,
+    expand,
+    iexpand,
+    expand_arg,
     is_expandable,
 )
 
@@ -250,13 +250,13 @@ class TestFPathIexpand:
             next(gen)
 
 
-class TestIexpandFpath:
+class TestIexpand:
     def test_returns_a_generator(self, tree):
-        result = iexpand_fpath(str(tree / "tr{trajectory:d}/job{job:d}.log"))
+        result = iexpand(str(tree / "tr{trajectory:d}/job{job:d}.log"))
         assert inspect.isgenerator(result)
 
     def test_yields_expected_paths(self, tree):
-        result = list(iexpand_fpath(str(tree / "tr{trajectory:d}/job{job:d}.log")))
+        result = list(iexpand(str(tree / "tr{trajectory:d}/job{job:d}.log")))
         assert len(result) == 4
         assert all(isinstance(p.metadata, dict) for p in result)
 
@@ -268,26 +268,26 @@ class TestExpandedFPath:
             ExpandedFPath(paths=[p, p], fpath=FPath("foo.txt"))
 
     def test_len_and_getitem(self, tree):
-        expanded = expand_fpath(str(tree / "tr{trajectory:d}/job{job:d}.log"))
+        expanded = expand(str(tree / "tr{trajectory:d}/job{job:d}.log"))
         assert len(expanded) == 4
         assert expanded[0] in list(expanded)
 
     def test_repr_contains_fpath_and_count(self, tree):
-        expanded = expand_fpath(str(tree / "tr{trajectory:d}/job{job:d}.log"))
+        expanded = expand(str(tree / "tr{trajectory:d}/job{job:d}.log"))
         text = repr(expanded)
         assert repr(expanded.fpath) in text
         assert "4 matches found" in text
 
     def test_metadata_property(self, tree):
-        expanded = expand_fpath(str(tree / "tr{trajectory:d}/job{job:d}.log"))
+        expanded = expand(str(tree / "tr{trajectory:d}/job{job:d}.log"))
         metadata = expanded.metadata
         assert set(metadata.keys()) == set(expanded.paths)
         assert all(isinstance(v, dict) for v in metadata.values())
 
 
-class TestExpandFpath:
+class TestExpand:
     def test_returns_expanded_fpath(self, tree):
-        expanded = expand_fpath(str(tree / "tr{trajectory:d}/job{job:d}.log"))
+        expanded = expand(str(tree / "tr{trajectory:d}/job{job:d}.log"))
         assert isinstance(expanded, ExpandedFPath)
         assert len(expanded) == 4
 
@@ -305,7 +305,7 @@ class TestIsExpandable:
 
 class TestExpandFpathDecorator:
     def test_wraps_plain_string(self, tree):
-        @expand_fpath_decorator
+        @expand_arg
         def f(expanded_fpath):
             return expanded_fpath
 
@@ -314,22 +314,22 @@ class TestExpandFpathDecorator:
         assert len(result) == 4
 
     def test_passthrough_expanded_fpath(self, tree):
-        @expand_fpath_decorator
+        @expand_arg
         def f(expanded_fpath):
             return expanded_fpath
 
-        expanded = expand_fpath(str(tree / "tr{trajectory:d}/job{job:d}.log"))
+        expanded = expand(str(tree / "tr{trajectory:d}/job{job:d}.log"))
         assert f(expanded) is expanded
 
     def test_require_expandable_false_is_the_default(self):
-        @expand_fpath_decorator
+        @expand_arg
         def f(fpath):
             return fpath
 
         assert f("plain/no/fields.log") == "plain/no/fields.log"
 
     def test_require_expandable_true_raises(self):
-        @expand_fpath_decorator(require_expandable=True)
+        @expand_arg(require_expandable=True)
         def f(expanded_fpath):
             return expanded_fpath
 
@@ -340,7 +340,7 @@ class TestExpandFpathDecorator:
         (tree / "trX").mkdir()
         (tree / "trX" / "jobY.log").write_text("bad\n")
 
-        @expand_fpath_decorator
+        @expand_arg
         def f(expanded_fpath):
             return expanded_fpath
 

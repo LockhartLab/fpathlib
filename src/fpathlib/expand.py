@@ -4,7 +4,7 @@ import parse
 from .fpath import ExpandedFPath, FPath
 
 
-def expand_fpath(fpath, *, exclude_path_patterns=None, require_metadata=True):
+def expand(fpath, *, exclude_path_patterns=None, require_metadata=True):
     """
     Use an f-string to extract out a collection of paths, where the f-string variables
     are captured and stored along the path name. This is a convenience function that
@@ -31,9 +31,9 @@ def expand_fpath(fpath, *, exclude_path_patterns=None, require_metadata=True):
     )
 
 
-def iexpand_fpath(fpath, *, exclude_path_patterns=None, require_metadata=True, errors="raise"):
+def iexpand(fpath, *, exclude_path_patterns=None, require_metadata=True, errors="raise"):
     """
-    Generator equivalent of :func:`.expand_fpath` -- lazily yields each
+    Generator equivalent of :func:`.expand` -- lazily yields each
     matching :obj:`.Path` instead of building the whole
     :obj:`.ExpandedFPath` up front. This is a convenience function that
     simply creates an :obj:`FPath` and calls its :meth:`.FPath.iexpand`
@@ -63,9 +63,9 @@ def iexpand_fpath(fpath, *, exclude_path_patterns=None, require_metadata=True, e
     )
 
 
-def expand_fpath_decorator(f=None, require_expandable=False):
+def expand_arg(f=None, require_expandable=False):
     """
-    Decorator for :func:`.expand_fpath`. Expands `fpath` (if it has {}
+    Decorator for :func:`.expand`. Expands `fpath` (if it has {}
     named captures) before calling the wrapped function with the result;
     otherwise calls it with `fpath` unchanged. Callers that need to react
     differently depending on whether expansion actually happened (e.g. to
@@ -96,7 +96,7 @@ def expand_fpath_decorator(f=None, require_expandable=False):
             if is_expandable(fpath):
                 exclude_path_patterns = kwargs.pop("exclude_path_patterns", None)
                 require_metadata = kwargs.pop("require_metadata", True)
-                expanded_fpath = expand_fpath(
+                expanded_fpath = expand(
                     fpath,
                     exclude_path_patterns=exclude_path_patterns,
                     require_metadata=require_metadata,

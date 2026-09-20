@@ -400,14 +400,14 @@ class TestLineFilterAndIncludeLine:
 
 class TestExpandedFPathToPolars:
     def test_none_metadata_becomes_empty_columns(self, tmp_path):
-        # expand_fpath(..., require_metadata=False) on a pattern with no
+        # expand(..., require_metadata=False) on a pattern with no
         # named captures leaves metadata=None for every match -- to_polars()
         # used to crash on `**None` there; it should just produce a frame
         # with no metadata columns instead.
         (tmp_path / "a.log").write_text("data\n")
         (tmp_path / "b.log").write_text("data\n")
 
-        ex = fpathlib.expand_fpath(str(tmp_path / "*.log"), require_metadata=False)
+        ex = fpathlib.expand(str(tmp_path / "*.log"), require_metadata=False)
         df = ex.to_polars()
 
         assert df.columns == ["fname"]
@@ -419,7 +419,7 @@ class TestExpandedFPathToPolars:
         (tmp_path / "tr1").mkdir()
         (tmp_path / "tr1" / "job1.log").write_text("good\n")
 
-        ex = fpathlib.expand_fpath(
+        ex = fpathlib.expand(
             str(tmp_path / "tr{trajectory:d}/job{job:d}.log"),
             require_metadata=False,
         )

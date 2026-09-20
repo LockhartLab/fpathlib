@@ -23,11 +23,11 @@ FPath and ExpandedFPath
 Expanding paths
 ----------------
 
-.. autofunction:: fpathlib.expand_fpath
+.. autofunction:: fpathlib.expand
 
-.. autofunction:: fpathlib.iexpand_fpath
+.. autofunction:: fpathlib.iexpand
 
-.. autofunction:: fpathlib.expand_fpath_decorator
+.. autofunction:: fpathlib.expand_arg
 
 .. autofunction:: fpathlib.is_expandable
 

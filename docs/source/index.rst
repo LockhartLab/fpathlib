@@ -11,10 +11,10 @@ own filename.
 
 .. code-block:: python
 
-    from fpathlib import expand_fpath
+    from fpathlib import expand
 
     # Given files like data/tr1/output/0/job2.log, data/tr2/output/1/job0.log, ...
-    expanded = expand_fpath("data/tr{trajectory:d}/output/{replica:d}/job{job:d}.log")
+    expanded = expand("data/tr{trajectory:d}/output/{replica:d}/job{job:d}.log")
 
     for path in expanded:
         print(path, path.metadata)

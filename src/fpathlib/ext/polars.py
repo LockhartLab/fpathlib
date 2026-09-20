@@ -1,6 +1,6 @@
 from functools import wraps
 import polars as _polars
-from fpathlib import expand_fpath_decorator, is_expandable, ExpandedFPath
+from fpathlib import expand_arg, is_expandable, ExpandedFPath
 
 
 def __getattr__(name):
@@ -18,18 +18,18 @@ def join_metadata(f):
     Wraps a scan_csv-shaped function `f(source, *args, **kwargs) ->
     LazyFrame` with metadata-joining and "_fname" cleanup, applied
     automatically to whatever `f` returns. Must be applied *inside*
-    @expand_fpath_decorator (i.e. listed closer to `def`), so `source`
+    @expand_arg (i.e. listed closer to `def`), so `source`
     here is always the already-expanded value, not the raw caller-supplied
     pattern:
 
-        @expand_fpath_decorator
+        @expand_arg
         @join_metadata
         def scan_csv(source, ...): ...
 
     Guards against getting that order backwards: if `source` still looks
     like an unexpanded {} pattern at this point, expansion can only have
     failed to run (wrong decorator order, or this decorator used without
-    @expand_fpath_decorator at all) -- raise immediately rather than
+    @expand_arg at all) -- raise immediately rather than
     silently joining no metadata.
     """
 
@@ -39,7 +39,7 @@ def join_metadata(f):
         if not isinstance(source, ExpandedFPath) and is_expandable(source):
             msg = (
                 f"join_metadata received an unexpanded pattern "
-                f"{source!r} -- @expand_fpath_decorator must be the outer "
+                f"{source!r} -- @expand_arg must be the outer "
                 "decorator, applied above (not below) @join_metadata"
             )
             raise RuntimeError(msg)
@@ -143,7 +143,7 @@ def read_txt(
     ).collect()
 
 
-@expand_fpath_decorator
+@expand_arg
 @join_metadata
 def scan_csv(source, include_file_paths=None, *args, **kwargs):
     """
@@ -180,7 +180,7 @@ def scan_csv(source, include_file_paths=None, *args, **kwargs):
     return lf
 
 
-@expand_fpath_decorator
+@expand_arg
 @join_metadata
 def scan_parquet(source, include_file_paths=None, *args, **kwargs):
     """
@@ -217,7 +217,7 @@ def scan_parquet(source, include_file_paths=None, *args, **kwargs):
     return lf
 
 
-@expand_fpath_decorator
+@expand_arg
 def scan_txt(
     source,
     line_filter=None,
@@ -295,7 +295,7 @@ def scan_txt(
     # doing the metadata-join/include_file_paths handling directly) so
     # that handling -- including the recursive single-file sample call
     # below, since source[0] is a plain Path, not an ExpandedFPath --
-    # isn't duplicated here. scan_csv's own @expand_fpath_decorator is a
+    # isn't duplicated here. scan_csv's own @expand_arg is a
     # no-op on `source` at this point: it's already been resolved by
     # scan_txt's decorator, so scan_csv just sees an ExpandedFPath or an
     # already-unexpandable literal/glob, either way with nothing left to
