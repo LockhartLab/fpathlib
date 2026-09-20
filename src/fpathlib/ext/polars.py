@@ -12,30 +12,24 @@ def __getattr__(name):
     return getattr(_polars, name)
 
 
-def join_metadata(df, expanded_fpath):
-    # Only call this when expanded_fpath is actually an ExpandedFPath --
-    # there's no captured metadata to join otherwise. "fname" is
-    # ExpandedFPath.to_polars()'s normal, public column name; rename it to
-    # the same reserved "_fname" that scan_csv/scan_parquet/scan_txt use
-    # internally, so the join key can never collide with an
-    # `include_file_paths` name a caller chose (including "fname" itself).
-    metadata = expanded_fpath.to_polars(lazy=isinstance(df, _polars.LazyFrame))
-    metadata = metadata.rename({"fname": "_fname"})
-    return df.join(metadata, on="_fname").drop("_fname")
-
-
-def _finish_fname(lf, expanded_fpath, include_file_paths):
-    # Shared tail for scan_csv/scan_parquet/scan_txt: alias the internal
-    # "_fname" join key to a caller-chosen output name if requested, then
-    # either join in captured metadata (which consumes and drops "_fname"
-    # as part of that) or, if there's no metadata to join, just drop
-    # "_fname" directly.
+def _finish_fname(lf, source, include_file_paths):
+    # Shared tail for scan_csv/scan_parquet: alias the internal "_fname"
+    # join key to a caller-chosen output name if requested, then either
+    # join in captured metadata or, if there's none to join (a literal
+    # path or plain glob with no {} captures), just drop "_fname".
     if include_file_paths is not None:
         lf = lf.with_columns(_polars.col("_fname").alias(include_file_paths))
 
-    if isinstance(expanded_fpath, ExpandedFPath):
-        return join_metadata(lf, expanded_fpath)
-    return lf.drop("_fname")
+    if not isinstance(source, ExpandedFPath):
+        return lf.drop("_fname")
+
+    # "fname" is ExpandedFPath.to_polars()'s normal, public column name;
+    # rename it to the same reserved "_fname" used above, so the join key
+    # can never collide with an `include_file_paths` name a caller chose
+    # (including "fname" itself).
+    metadata = source.to_polars(lazy=isinstance(lf, _polars.LazyFrame))
+    metadata = metadata.rename({"fname": "_fname"})
+    return lf.join(metadata, on="_fname").drop("_fname")
 
 
 def read_csv(fpath, *args, **kwargs):
@@ -117,7 +111,7 @@ def read_txt(
 
 
 @expand_fpath_decorator
-def scan_csv(expanded_fpath, include_file_paths=None, *args, **kwargs):
+def scan_csv(source, include_file_paths=None, *args, **kwargs):
     """
     Scan the paths in the collection as CSV files, and return a
     :obj:`polars.LazyFrame` along with the metadata captured from the path
@@ -125,8 +119,8 @@ def scan_csv(expanded_fpath, include_file_paths=None, *args, **kwargs):
 
     Parameters
     ----------
-    expanded_fpath : :obj:`fpathlib.ExpandedFPath`
-        An expanded f-string path.
+    source : :obj:`fpathlib.ExpandedFPath`, or any type accepted by :obj:`polars.scan_csv`
+        An expanded f-string path, or a plain path/glob.
     include_file_paths : :obj:`str`, optional
         Name to give a column of each row's source file path in the
         output. The file path is always used internally to join captured
@@ -142,17 +136,17 @@ def scan_csv(expanded_fpath, include_file_paths=None, *args, **kwargs):
     """
 
     lf = _polars.scan_csv(
-        expanded_fpath,
+        source,
         include_file_paths="_fname",
         *args,
         **kwargs,
     )
 
-    return _finish_fname(lf, expanded_fpath, include_file_paths)
+    return _finish_fname(lf, source, include_file_paths)
 
 
 @expand_fpath_decorator
-def scan_parquet(expanded_fpath, include_file_paths=None, *args, **kwargs):
+def scan_parquet(source, include_file_paths=None, *args, **kwargs):
     """
     Scan the paths in the collection as a parquet file, and return a
     :obj:`polars.LazyFrame` along with the metadata captured from the path
@@ -160,8 +154,8 @@ def scan_parquet(expanded_fpath, include_file_paths=None, *args, **kwargs):
 
     Parameters
     ----------
-    expanded_fpath : :obj:`fpathlib.ExpandedFPath`
-        An expanded f-string path.
+    source : :obj:`fpathlib.ExpandedFPath`, or any type accepted by :obj:`polars.scan_parquet`
+        An expanded f-string path, or a plain path/glob.
     include_file_paths : :obj:`str`, optional
         Name to give a column of each row's source file path in the
         output. The file path is always used internally to join captured
@@ -177,19 +171,18 @@ def scan_parquet(expanded_fpath, include_file_paths=None, *args, **kwargs):
     """
 
     lf = _polars.scan_parquet(
-        expanded_fpath,
+        source,
         include_file_paths="_fname",
         *args,
         **kwargs,
     )
 
-    return _finish_fname(lf, expanded_fpath, include_file_paths)
+    return _finish_fname(lf, source, include_file_paths)
 
 
-# TODO rename expanded_fpath as source
 @expand_fpath_decorator
 def scan_txt(
-    expanded_fpath,
+    source,
     line_filter=None,
     separator=None,
     new_columns=None,
@@ -210,8 +203,8 @@ def scan_txt(
 
     Parameters
     ----------
-    expanded_fpath : :obj:`fpathlib.ExpandedFPath`
-        An expanded f-string path.
+    source : :obj:`fpathlib.ExpandedFPath`, or any type accepted by :obj:`polars.scan_csv`
+        An expanded f-string path, or a plain path/glob.
     line_filter : :obj:`callable`, optional
         A function that takes a :obj:`polars.Expr` for the line's text and
         returns a boolean :obj:`polars.Expr`, used to filter lines before
@@ -256,24 +249,27 @@ def scan_txt(
     :obj:`polars.LazyFrame`
     """
 
-    # TODO there are forbidden variables that should not be in expanded_fpath
+    # TODO there are forbidden variables that should not be in source
     # such as '_line' and 'fields' and '_fname'
 
     # TODO schema and schema_overrides is probably broken
 
-    lf = _polars.scan_csv(
-        expanded_fpath,
-        include_file_paths="_fname",
+    # Delegates to scan_csv (rather than calling _polars.scan_csv +
+    # _finish_fname directly) so the "_fname"/include_file_paths handling
+    # -- including the recursive single-file sample call below, since
+    # source[0] is a plain Path, not an ExpandedFPath -- isn't duplicated
+    # here. scan_csv's own @expand_fpath_decorator is a no-op on `source`
+    # at this point: it's already been resolved by scan_txt's decorator,
+    # so scan_csv just sees an ExpandedFPath or an already-unexpandable
+    # literal/glob, either way with nothing left to expand.
+    lf = scan_csv(
+        source,
+        include_file_paths=include_file_paths,
         separator="\n",
         new_columns=["_line"],
         has_header=False,
         **kwargs,
     )
-
-    # This also covers the recursive single-file sample call below
-    # (expanded_fpath[0] is a plain Path, not an ExpandedFPath, so it
-    # always takes _finish_fname's non-expandable branch).
-    lf = _finish_fname(lf, expanded_fpath, include_file_paths)
 
     # Can filter lines before doing any further processing
     # This could be to remove lines with comments, etc.
@@ -294,19 +290,19 @@ def scan_txt(
         # With many matched files, inferring the field count/dtypes directly
         # against the full glob is extremely slow (every file has to be opened
         # before a `.head()` takes effect). Instead, recurse on a single
-        # representative file -- expanded_fpath[0] -- and reuse its already-cheap
+        # representative file -- source[0] -- and reuse its already-cheap
         # (single-file) inference below instead of duplicating it here. Computed
         # once here since it's needed by both the field-count branch below and
         # the dtype-inference branch further down.
         infer_schema = kwargs.get("infer_schema", True)
         sample_schema = None
         if (
-            isinstance(expanded_fpath, ExpandedFPath)
-            and len(expanded_fpath) > 1
+            isinstance(source, ExpandedFPath)
+            and len(source) > 1
             and (usecols is None or infer_schema)
         ):
             sample_schema = scan_txt(
-                expanded_fpath[0],
+                source[0],
                 line_filter=line_filter,
                 separator=separator,
                 new_columns=new_columns,
@@ -325,8 +321,8 @@ def scan_txt(
         else:
             if sample_schema is not None:
                 # The recursive sample call above is always non-expandable
-                # (expanded_fpath[0] is a plain Path), so it already drops
-                # "_fname" itself -- no adjustment needed here.
+                # (source[0] is a plain Path), so it already drops "_fname"
+                # itself -- no adjustment needed here.
                 n_fields = len(sample_schema)
             else:
                 n_fields = (
