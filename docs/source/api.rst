@@ -25,6 +25,8 @@ Expanding paths
 
 .. autofunction:: fpathlib.expand_fpath
 
+.. autofunction:: fpathlib.iexpand_fpath
+
 .. autofunction:: fpathlib.expand_fpath_decorator
 
 .. autofunction:: fpathlib.is_expandable
