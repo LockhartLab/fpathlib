@@ -91,7 +91,7 @@ def read_csv(source, *args, **kwargs):
 def read_txt(
     source,
     line_filter=None,
-    separator=None,
+    separator=r"\s+",
     new_columns=None,
     has_header=False,
     *args,
@@ -221,7 +221,7 @@ def scan_parquet(source, include_file_paths=None, *args, **kwargs):
 def scan_txt(
     source,
     line_filter=None,
-    separator=None,
+    separator=r"\s+",
     new_columns=None,
     has_header=False,
     include_line=None,
