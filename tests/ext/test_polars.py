@@ -334,7 +334,10 @@ class TestLineFilterAndIncludeLine:
             return line != "drop"
 
         df = pl.scan_txt(
-            str(tmp_path / "tr1.log"), has_header=False, line_filter=predicate
+            str(tmp_path / "tr1.log"),
+            separator=None,
+            has_header=False,
+            line_filter=predicate,
         ).collect()
 
         assert len(calls) == 1
@@ -358,7 +361,9 @@ class TestLineFilterAndIncludeLine:
     def test_no_separator_no_include_line_defaults_to_line(self, tmp_path):
         self._write(tmp_path, "tr1.log", "hello\n")
 
-        df = pl.scan_txt(str(tmp_path / "tr1.log"), has_header=False).collect()
+        df = pl.scan_txt(
+            str(tmp_path / "tr1.log"), separator=None, has_header=False
+        ).collect()
 
         assert "line" in df.columns
         assert "_line" not in df.columns
@@ -368,7 +373,10 @@ class TestLineFilterAndIncludeLine:
         self._write(tmp_path, "tr1.log", "hello\n")
 
         df = pl.scan_txt(
-            str(tmp_path / "tr1.log"), has_header=False, include_line="raw"
+            str(tmp_path / "tr1.log"),
+            separator=None,
+            has_header=False,
+            include_line="raw",
         ).collect()
 
         assert "raw" in df.columns
@@ -396,6 +404,32 @@ class TestLineFilterAndIncludeLine:
         assert set(df.columns) >= {"raw", "source", "field_0", "field_1", "n"}
         assert "_line" not in df.columns
         assert "_fname" not in df.columns
+
+
+class TestStripInitialSpaces:
+    # Two matched files, so scan_txt takes the multi-file path that infers
+    # the schema from a single sample file (source[0]) -- the sample must
+    # honor strip_initial_spaces too, or its field count won't match.
+    @pytest.fixture
+    def indented(self, tmp_path):
+        for n in (1, 2):
+            (tmp_path / f"tr{n}.log").write_text("  1 2\n  3 4\n")
+        return str(tmp_path / "tr{n:d}.log")
+
+    def test_strips_by_default(self, indented):
+        df = pl.read_txt(indented)
+
+        assert set(df.columns) == {"n", "field_0", "field_1"}
+        assert df.height == 4
+        assert sorted(df["field_0"]) == [1, 1, 3, 3]
+
+    def test_disabled_keeps_leading_empty_field(self, indented):
+        df = pl.read_txt(indented, strip_initial_spaces=False)
+
+        assert set(df.columns) == {"n", "field_0", "field_1", "field_2"}
+        assert df.height == 4
+        assert list(df["field_0"]) == [""] * 4
+        assert sorted(df["field_1"]) == [1, 1, 3, 3]
 
 
 class TestExpandedFPathToPolars:

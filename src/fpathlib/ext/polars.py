@@ -92,6 +92,7 @@ def read_txt(
     source,
     line_filter=None,
     separator=r"\s+",
+    strip_initial_spaces=True,
     new_columns=None,
     has_header=False,
     *args,
@@ -136,6 +137,7 @@ def read_txt(
         source,
         line_filter=line_filter,
         separator=separator,
+        strip_initial_spaces=strip_initial_spaces,
         new_columns=new_columns,
         has_header=has_header,
         *args,
@@ -222,6 +224,7 @@ def scan_txt(
     source,
     line_filter=None,
     separator=r"\s+",
+    strip_initial_spaces=True,
     new_columns=None,
     has_header=False,
     include_line=None,
@@ -309,6 +312,10 @@ def scan_txt(
         **kwargs,
     )
 
+    # Strip leading whitespace from each line if requested.
+    if strip_initial_spaces:
+        lf = lf.with_columns(_polars.col("_line").str.strip_chars_start())
+
     # Can filter lines before doing any further processing
     # This could be to remove lines with comments, etc.
     if line_filter is not None:
@@ -343,6 +350,7 @@ def scan_txt(
                 source[0],
                 line_filter=line_filter,
                 separator=separator,
+                strip_initial_spaces=strip_initial_spaces,
                 new_columns=new_columns,
                 has_header=has_header,
                 usecols=usecols,
